@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# Virtual environments
+venv/
+cvqip_env/
+env/
+
+# Generated outputs (too large)
+outputs/
+logs/
+
+# HPC specific
+slurm_scripts/
+*.out
+*.err
+
+# OS
+.DS_Store
+Thumbs.db
