@@ -22,8 +22,8 @@ pandas>=2.0,<3.0
 
 # ── Optional: GBS (Page 5 full functionality) ─────────────────────────────────
 # Uncomment on HPC where these are available
-# strawberryfields>=0.23
+strawberryfields>=0.23
 # thewalrus>=0.20
-# pennylane>=0.36
-# pennylane-sf>=0.30
-# networkx>=3.3
+pennylane>=0.36
+pennylane-sf>=0.30
+networkx>=3.3
