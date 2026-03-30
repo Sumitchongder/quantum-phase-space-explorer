@@ -346,11 +346,11 @@ def page_state_explorer():
         # State-specific selector
         st.markdown("**Preset:**")
         if state_type == "Fock |n⟩":
-            n_sel = st.select_slider("Photon number n", options=[0,1,2,3,5], key="se_fock")
+            n_sel = st.select_slider("Photon number n", options=[1,2,3,5], key="se_fock")
             grp, key = "fock", n_sel
 
         # Special case: vacuum Fock state is classical
-        if state_type == "Fock |n⟩" and n_sel == 0:
+        elif state_type == "Fock |n⟩" and n_sel == 0:
             meta = dict(meta)  # copy so you don’t mutate STATE_META globally
             meta["classical"] = True
 
