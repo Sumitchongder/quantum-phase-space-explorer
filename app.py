@@ -421,14 +421,18 @@ def page_state_explorer():
         with tab1:
             st.plotly_chart(fw(sd["W"], xvec, f"Wigner — {state_type}", h=440, show3d=view3d),
                             use_container_width=True)
-            neg = f"{wnv:.5f}" if wnv>0.001 else "≈ 0 (classical)"
+
+            neg = f"{wnv:.5f}" if wnv>0.001 else "≈ 0"
+            is_nonclassical = (wnv > 0.001) or (not meta["classical"])
+            
             st.markdown(f"""
             <div class="insight"><div class="t">💡 What you're seeing</div>
             <p>W(x,p) is a quasi-probability distribution in phase space.
             <b>Pink/red = negative</b> — impossible classically.
             Wigner Negativity Volume = <b>{neg}</b>.
-            {'This state is <b>non-classical</b> ✅' if wnv>0.001 else 'This state is <b>classical</b> — no negativity ❌'}
+            {'This state is <b>non-classical</b> ✅' if is_nonclassical else 'This state is <b>classical</b> ❌'}
             </p></div>""", unsafe_allow_html=True)
+
 
         with tab2:
             st.plotly_chart(fq(sd["Q"], xvec, f"Husimi Q — {state_type}", h=440),
