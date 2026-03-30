@@ -1,12 +1,17 @@
 """
 ╔══════════════════════════════════════════════════════════════════════════════╗
-║  app.py  —  Density Matrix & Wigner Function Dashboard  v5.0                 ║
-║  IIT Jodhpur · m25iqt013                                                     ║
-║  Live QuTiP computation · Industry-grade professional UI                     ║
+║  app.py  —  CV Quantum Information Dashboard  (STATIC / CLOUD-SAFE v3.0)   ║
+║  IIT Jodhpur · m25iqt013                                                    ║
+║                                                                              ║
+║  ARCHITECTURE: Zero heavy imports at runtime.                                ║
+║  All quantum data is pre-computed (generate_data.py) → saved to data/*.pkl  ║
+║  Only needs: streamlit · plotly · numpy · pandas                             ║
+║  100% compatible with Streamlit Cloud free tier.                             ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
 """
-import sys, os, math, warnings
-warnings.filterwarnings("ignore")
+
+import pickle, math, os, sys
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -14,1507 +19,1118 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import streamlit as st
 
-import qutip as qt
-from qutip import (
-    basis, ket2dm, coherent, coherent_dm, thermal_dm,
-    expect, destroy, num, displace, squeeze, mesolve, Options,
-)
-
-# ══════════════════════════════════════════════════════════════════════════════
-# PAGE CONFIG  — must be FIRST Streamlit call
-# ══════════════════════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════════════════════════
+# PAGE CONFIG  ── must be the very first Streamlit call
+# ════════════════════════════════════════════════════════════════════════════════
 st.set_page_config(
-    page_title="Quantum Phase Space · m25iqt013",
+    page_title="CV Quantum Dashboard",
     page_icon="⚛️",
     layout="wide",
     initial_sidebar_state="expanded",
-    menu_items={"About": "Density Matrix & Wigner Function · IIT Jodhpur · m25iqt013"},
+    menu_items={"About": "CV Quantum Information · IIT Jodhpur · m25iqt013"},
 )
 
-# ══════════════════════════════════════════════════════════════════════════════
-# GLOBAL CSS — bright, vibrant, Xanadu professional
-# ══════════════════════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════════════════════════
+# DESIGN SYSTEM — deep-space scientific aesthetic
+# ════════════════════════════════════════════════════════════════════════════════
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Syne:wght@400;600;700;800&display=swap');
 
 /* ── Base ── */
-[data-testid="stAppViewContainer"] {
-    background: #07091a;
-    background-image:
-        radial-gradient(ellipse 90% 40% at 15% 0%, rgba(109,40,217,0.12) 0%, transparent 55%),
-        radial-gradient(ellipse 60% 35% at 85% 90%, rgba(6,182,212,0.07) 0%, transparent 55%);
+:root {
+  --bg:       #020817;
+  --bg2:      #060e24;
+  --bg3:      #0b1635;
+  --border:   #1a2d5a;
+  --border2:  #2a4080;
+  --accent:   #6366f1;   /* indigo */
+  --accent2:  #22d3ee;   /* cyan */
+  --accent3:  #f472b6;   /* pink */
+  --accent4:  #a3e635;   /* lime */
+  --gold:     #fbbf24;
+  --text:     #e2e8f0;
+  --text-dim: #64748b;
+  --mono:     'Space Mono', monospace;
+  --sans:     'Syne', sans-serif;
 }
-[data-testid="stSidebar"] {
-    background: linear-gradient(180deg, #0d0e24 0%, #080918 100%) !important;
-    border-right: 1px solid #2d1b69;
-}
-[data-testid="stHeader"] { background: transparent !important; }
-html, body, [class*="css"] {
-    color: #e2e8f0;
-    font-family: 'Inter', 'DejaVu Sans', sans-serif;
-}
-.block-container { padding-top: 1.4rem !important; }
+
+[data-testid="stAppViewContainer"] { background: var(--bg); }
+[data-testid="stSidebar"]          { background: var(--bg2); border-right: 1px solid var(--border); }
+[data-testid="stHeader"]           { background: transparent; }
+html, body, [class*="css"]         { color: var(--text); }
 
 /* ── Typography ── */
-h1 { font-size: 2.0rem; font-weight: 800; letter-spacing: -0.02em; color: #f1f5f9; }
-h2 { font-size: 1.35rem; font-weight: 700; color: #a78bfa; }
-h3 { font-size: 1.05rem; font-weight: 600; color: #7dd3fc; }
+h1,h2,h3,h4 { font-family: var(--sans); letter-spacing: -0.02em; }
+h1 { font-size: 2.1rem; font-weight: 800; color: #fff; }
+h2 { font-size: 1.4rem; font-weight: 700; color: var(--accent2); }
+h3 { font-size: 1.05rem; font-weight: 600; color: var(--accent); }
+p, li, label { font-family: var(--sans); font-size: 0.88rem; }
 
 /* ── Sidebar ── */
-[data-testid="stSidebar"] label { color: #c4b5fd !important; font-weight: 600; font-size: 0.82rem !important; }
-[data-testid="stSidebar"] .stSlider > label { color: #7dd3fc !important; }
-[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p { color: #64748b; font-size: 0.73rem; }
-section[data-testid="stSidebar"] > div:first-child { padding-top: 0; }
+[data-testid="stSidebar"] label { color: #94a3b8 !important; font-family: var(--mono); font-size: 0.75rem; }
+[data-testid="stSidebar"] .stRadio > label { color: #94a3b8 !important; }
+[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p { font-size: 0.76rem; color: var(--text-dim); }
 
-/* ── Metric cards ── */
+/* ── Metrics ── */
 [data-testid="metric-container"] {
-    background: linear-gradient(135deg, #12124a 0%, #1a0a2e 100%);
-    border: 1px solid #2d1b69;
-    border-radius: 12px;
-    padding: 12px 16px;
-    transition: transform 0.15s, box-shadow 0.15s;
+    background: linear-gradient(135deg, var(--bg2), var(--bg3));
+    border: 1px solid var(--border); border-radius: 12px;
+    padding: 14px 18px;
 }
-[data-testid="metric-container"]:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(167,139,250,0.2);
-}
-[data-testid="stMetricValue"] {
-    color: #a78bfa; font-weight: 800; font-size: 1.35rem !important;
-    font-family: 'JetBrains Mono', monospace;
-}
-[data-testid="stMetricLabel"] { color: #94a3b8; font-size: 0.72rem; }
-[data-testid="stMetricDelta"] { font-size: 0.72rem; }
+[data-testid="stMetricValue"] { font-family: var(--mono); color: var(--accent2); font-size: 1.3rem; font-weight: 700; }
+[data-testid="stMetricLabel"] { color: var(--text-dim); font-size: 0.7rem; font-family: var(--mono); }
+[data-testid="stMetricDelta"] { font-size: 0.7rem; }
 
 /* ── Buttons ── */
 .stButton > button {
-    background: linear-gradient(135deg, #4c1d95, #7c3aed);
-    color: white; border: none; border-radius: 9px;
-    font-weight: 700; padding: 9px 22px;
-    font-family: 'Inter', sans-serif; font-size: 0.82rem;
-    transition: all 0.2s; box-shadow: 0 4px 12px rgba(124,58,237,0.35);
+    background: linear-gradient(135deg, #312e81, var(--accent));
+    color: white; border: none; border-radius: 8px;
+    font-family: var(--mono); font-size: 0.78rem; font-weight: 700;
+    padding: 9px 22px; letter-spacing: 0.05em; transition: all 0.2s;
 }
-.stButton > button:hover {
-    background: linear-gradient(135deg, #6d28d9, #9333ea);
-    transform: translateY(-2px); box-shadow: 0 8px 20px rgba(124,58,237,0.5);
-}
+.stButton > button:hover { background: linear-gradient(135deg, var(--accent), #818cf8); transform: translateY(-1px); }
 
-/* ── Selectbox ── */
-.stSelectbox > div > div {
-    background: #12124a; border: 1px solid #2d1b69;
-    border-radius: 9px; color: #e2e8f0;
-    font-family: 'JetBrains Mono', monospace; font-size: 0.82rem;
-}
-[data-baseweb="select"] > div:focus-within {
-    border-color: #7c3aed !important;
-    box-shadow: 0 0 0 3px rgba(124,58,237,0.25) !important;
-}
-
-/* ── Sliders ── */
-.stSlider > div > div > div { background: #2d1b69 !important; }
-.stSlider [data-testid="stThumb"] {
-    background: linear-gradient(135deg, #7c3aed, #a78bfa) !important;
-    box-shadow: 0 0 10px rgba(167,139,250,0.5) !important;
-}
-
-/* ── Multiselect ── */
-[data-baseweb="tag"] { background: #4c1d95 !important; }
+/* ── Selectbox / slider ── */
+[data-baseweb="select"] > div { background: var(--bg3) !important; border-color: var(--border) !important; border-radius: 8px !important; font-family: var(--mono); font-size: 0.8rem; }
+.stSlider [data-testid="stThumb"] { background: var(--accent) !important; }
+.stSlider [data-testid="stSliderTrack"] > div:first-child { background: var(--border2) !important; }
+.stSlider [data-testid="stSliderTrack"] > div:last-child  { background: var(--accent) !important; }
 
 /* ── Tabs ── */
-.stTabs [data-baseweb="tab-list"] {
-    background: #0d0e24; border-bottom: 2px solid #2d1b69;
-    border-radius: 12px 12px 0 0; padding: 4px 6px; gap: 2px;
-}
-.stTabs [data-baseweb="tab"] {
-    color: #64748b; font-weight: 600; padding: 9px 18px;
-    border-radius: 8px 8px 0 0; font-size: 0.82rem;
-    font-family: 'Inter', sans-serif; transition: all 0.15s;
-}
-.stTabs [aria-selected="true"] {
-    color: #a78bfa !important;
-    background: linear-gradient(135deg, rgba(76,29,149,0.3), rgba(124,58,237,0.2));
-    border-bottom: 2.5px solid #a78bfa;
-}
+.stTabs [data-baseweb="tab-list"]  { background: var(--bg2); border-bottom: 2px solid var(--border); gap: 4px; padding: 0 4px; }
+.stTabs [data-baseweb="tab"]       { color: var(--text-dim); font-family: var(--mono); font-size: 0.78rem; padding: 10px 16px; border-radius: 8px 8px 0 0; }
+.stTabs [aria-selected="true"]     { color: var(--accent) !important; border-bottom: 2px solid var(--accent) !important; background: var(--bg3); }
 
-/* ── DataFrames ── */
-[data-testid="stDataFrame"] {
-    background: #0d0e24; border-radius: 10px; border: 1px solid #2d1b69;
-}
-
-/* ── Info / success / warning ── */
-[data-testid="stAlert"] { border-radius: 10px; }
-
-/* ── Divider ── */
-hr { border-color: #2d1b69; margin: 1rem 0; }
-
-/* ── Banner ── */
-.banner {
-    background: linear-gradient(135deg, #070718 0%, #160a2e 45%, #071828 100%);
-    border: 1px solid #4c1d95;
-    border-radius: 18px;
-    padding: 26px 36px;
-    text-align: center;
-    margin-bottom: 1.4rem;
+/* ── Custom components ── */
+.page-banner {
+    background: linear-gradient(135deg, var(--bg2) 0%, var(--bg3) 100%);
+    border: 1px solid var(--border2); border-radius: 16px;
+    padding: 24px 32px; margin-bottom: 20px;
     position: relative; overflow: hidden;
 }
-.banner::after {
-    content: '';
-    position: absolute; top: -50px; right: -50px;
-    width: 200px; height: 200px; border-radius: 50%;
-    background: radial-gradient(circle, rgba(109,40,217,0.18), transparent 70%);
-    pointer-events: none;
+.page-banner::before {
+    content: ''; position: absolute; top: -40px; right: -40px;
+    width: 180px; height: 180px; border-radius: 50%;
+    background: radial-gradient(circle, rgba(99,102,241,0.15), transparent 70%);
 }
-.banner::before {
-    content: '';
-    position: absolute; bottom: -40px; left: 25%;
-    width: 150px; height: 150px; border-radius: 50%;
-    background: radial-gradient(circle, rgba(6,182,212,0.09), transparent 70%);
-    pointer-events: none;
-}
-.banner h1 { color: #a78bfa; margin: 0 0 8px 0; font-size: 2.0rem; }
-.banner p  { color: #94a3b8; margin: 4px 0; font-size: 0.9rem; line-height: 1.5; }
-.banner .tag {
-    display: inline-block;
-    background: rgba(124,58,237,0.15); border: 1px solid rgba(124,58,237,0.4);
-    border-radius: 100px; padding: 3px 12px;
-    font-size: 0.7rem; font-family: 'JetBrains Mono', monospace;
-    color: #c4b5fd; margin: 5px 3px 0;
+.page-banner h1 { margin: 0 0 4px 0; font-size: 1.8rem; color: #fff; }
+.page-banner p  { margin: 3px 0; color: var(--text-dim); font-family: var(--mono); font-size: 0.78rem; }
+.page-banner .tag { 
+    display: inline-block; background: var(--bg3); border: 1px solid var(--border2);
+    border-radius: 20px; padding: 2px 10px; font-size: 0.7rem; font-family: var(--mono);
+    color: var(--accent2); margin: 4px 4px 0 0;
 }
 
-/* ── Equation box ── */
-.eq-box {
-    background: #0f0f2a; border: 1px solid #2d1b69;
-    border-left: 3px solid #7c3aed; border-radius: 0 10px 10px 0;
-    padding: 12px 18px; margin: 8px 0;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.85rem; color: #c4b5fd; line-height: 1.75;
+.eq-card {
+    background: var(--bg2); border: 1px solid var(--border);
+    border-left: 3px solid var(--accent); border-radius: 0 10px 10px 0;
+    padding: 12px 16px; margin: 8px 0;
+    font-family: var(--mono); font-size: 0.82rem; color: #c7d2fe;
+    line-height: 1.6;
 }
 
-/* ── Insight card ── */
-.ins-card {
-    background: linear-gradient(135deg, rgba(6,182,212,0.05), rgba(109,40,217,0.05));
-    border: 1px solid rgba(6,182,212,0.22);
-    border-radius: 12px; padding: 14px 18px; margin: 8px 0;
+.insight-card {
+    background: linear-gradient(135deg, rgba(34,211,238,0.05), rgba(99,102,241,0.05));
+    border: 1px solid rgba(34,211,238,0.2); border-radius: 12px;
+    padding: 14px 18px; margin: 8px 0;
 }
-.ins-card .label {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.65rem; color: #22d3ee;
-    text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 6px;
-}
-.ins-card p { margin: 0; font-size: 0.84rem; color: #94a3b8; line-height: 1.65; }
+.insight-card .title { font-family: var(--mono); font-size: 0.7rem; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 4px; }
+.insight-card p { margin: 0; font-size: 0.82rem; color: #94a3b8; }
 
-/* ── Non-classicality badge ── */
-.nc-badge {
-    display: inline-flex; align-items: center; gap: 5px;
-    padding: 5px 14px; border-radius: 100px;
-    font-family: 'Inter', sans-serif; font-size: 0.78rem; font-weight: 700;
+.warn-card {
+    background: rgba(251,191,36,0.07); border: 1px solid rgba(251,191,36,0.25);
+    border-radius: 10px; padding: 12px 16px; margin: 8px 0;
 }
-.nc-quantum  { background: rgba(244,114,182,0.14); color: #f472b6; border: 1px solid rgba(244,114,182,0.4); }
-.nc-squeezed { background: rgba(34,211,238,0.12);  color: #22d3ee; border: 1px solid rgba(34,211,238,0.4); }
-.nc-classical{ background: rgba(251,191,36,0.10);  color: #fbbf24; border: 1px solid rgba(251,191,36,0.35); }
+
+.section-divider {
+    border: none; border-top: 1px solid var(--border);
+    margin: 20px 0;
+}
+
+.state-badge {
+    display: inline-block; padding: 3px 12px;
+    border-radius: 20px; font-family: var(--mono); font-size: 0.72rem;
+    font-weight: 700; letter-spacing: 0.05em;
+}
+.badge-classical { background: rgba(251,191,36,0.15); color: var(--gold); border: 1px solid rgba(251,191,36,0.3); }
+.badge-nonclassical { background: rgba(244,114,182,0.15); color: var(--accent3); border: 1px solid rgba(244,114,182,0.3); }
+
+hr { border-color: var(--border); margin: 1rem 0; }
+.stDataFrame { font-family: var(--mono); font-size: 0.78rem; }
 </style>
 """, unsafe_allow_html=True)
 
-# ══════════════════════════════════════════════════════════════════════════════
-# PLOTLY TEMPLATE
-# ══════════════════════════════════════════════════════════════════════════════
-_T = dict(
-    paper_bgcolor="#07091a",
-    plot_bgcolor="#0d0e24",
-    font=dict(color="#e2e8f0", family="Inter, DejaVu Sans, sans-serif", size=11),
-    xaxis=dict(gridcolor="#1e1e3f", zerolinecolor="#2d1b69",
-               title_font=dict(size=11), tickfont=dict(size=9)),
-    yaxis=dict(gridcolor="#1e1e3f", zerolinecolor="#2d1b69",
-               title_font=dict(size=11), tickfont=dict(size=9)),
-    legend=dict(bgcolor="#0d0e24", bordercolor="#2d1b69", borderwidth=1,
-                font=dict(size=9)),
-    margin=dict(l=50, r=28, t=50, b=40),
-    colorway=["#a78bfa","#22d3ee","#f472b6","#34d399","#fbbf24","#60a5fa","#fb923c"],
+# ════════════════════════════════════════════════════════════════════════════════
+# PLOTLY THEME
+# ════════════════════════════════════════════════════════════════════════════════
+_LAY = dict(
+    paper_bgcolor="#020817",
+    plot_bgcolor="#060e24",
+    font=dict(color="#e2e8f0", family="Space Mono, monospace", size=11),
+    xaxis=dict(gridcolor="#0b1635", zerolinecolor="#1a2d5a", title_font=dict(size=11), tickfont=dict(size=9)),
+    yaxis=dict(gridcolor="#0b1635", zerolinecolor="#1a2d5a", title_font=dict(size=11), tickfont=dict(size=9)),
+    legend=dict(bgcolor="#060e24", bordercolor="#1a2d5a", borderwidth=1, font=dict(size=9)),
+    margin=dict(l=44, r=24, t=46, b=36),
+    colorway=["#6366f1","#22d3ee","#f472b6","#a3e635","#fbbf24","#60a5fa","#fb923c"],
 )
 
 # Colormaps
-W_CS  = [[0.0,"#1e3a5f"],[0.5,"#07091a"],[1.0,"#e879f9"]]   # blue-dark-magenta
-W_CS2 = [[0.0,"#0c1445"],[0.5,"#07091a"],[1.0,"#38bdf8"]]   # blue-dark-cyan
-Q_CS  = [[0.0,"#07091a"],[0.5,"#7c3aed"],[1.0,"#fbbf24"]]   # dark-violet-gold
-DM_CS = "RdBu_r"
+W_CS   = [[0.0,"#0a0f2e"],[0.35,"#1e1b4b"],[0.5,"#020817"],[0.65,"#4c0519"],[1.0,"#db2777"]]
+W_CS2  = [[0.0,"#042f2e"],[0.5,"#020817"],[1.0,"#0891b2"]]
+Q_CS   = [[0.0,"#020817"],[0.4,"#312e81"],[0.7,"#7c3aed"],[1.0,"#fbbf24"]]
+DM_CS  = "RdBu_r"
 
-# ══════════════════════════════════════════════════════════════════════════════
-# CACHED STATE BUILDERS & QUANTUM FUNCTIONS
-# ══════════════════════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════════════════════════
+# DATA LOADER
+# ════════════════════════════════════════════════════════════════════════════════
+DATA_DIR = Path(__file__).parent / "data"
 
-@st.cache_data(ttl=600, show_spinner=False)
-def _wigner(rho_arr: np.ndarray, xvec: np.ndarray) -> np.ndarray:
-    rho = qt.Qobj(rho_arr); rho.dims = [[rho_arr.shape[0]],[rho_arr.shape[0]]]
-    return np.array(qt.wigner(rho, xvec, xvec, g=2))
+@st.cache_resource(show_spinner=False)
+def load_data():
+    """Load all pre-computed pickle files once at startup."""
+    out = {}
+    for name in ("states", "channels", "gbs"):
+        p = DATA_DIR / f"{name}.pkl"
+        if p.exists():
+            with open(p, "rb") as f:
+                out[name] = pickle.load(f)
+        else:
+            out[name] = None
+    return out
 
-@st.cache_data(ttl=600, show_spinner=False)
-def _husimi(rho_arr: np.ndarray, xvec: np.ndarray) -> np.ndarray:
-    rho = qt.Qobj(rho_arr); rho.dims = [[rho_arr.shape[0]],[rho_arr.shape[0]]]
-    res = qt.qfunc(rho, xvec, xvec)
-    return np.array(res[0] if isinstance(res, tuple) else res)
+DATA = load_data()
 
-@st.cache_data(ttl=600, show_spinner=False)
-def _metrics(rho_arr: np.ndarray) -> dict:
-    rho = qt.Qobj(rho_arr); rho.dims = [[rho_arr.shape[0]],[rho_arr.shape[0]]]
-    dim = rho.shape[0]
-    a   = destroy(dim); n_op = num(dim)
-    x_op = (a + a.dag()) / np.sqrt(2)
-    p_op = 1j*(a.dag() - a) / np.sqrt(2)
-    mn   = float(expect(n_op, rho).real)
-    mn2  = float(expect(n_op*n_op, rho).real)
-    vn   = mn2 - mn**2
-    pur  = float((rho*rho).tr().real)
-    ent  = float(qt.entropy_vn(rho, base=2))
-    mq   = (vn-mn)/mn if mn > 1e-10 else float("nan")
-    mx   = float(expect(x_op, rho).real)
-    mp   = float(expect(p_op, rho).real)
-    vx   = float(expect(x_op*x_op, rho).real) - mx**2
-    vp   = float(expect(p_op*p_op, rho).real) - mp**2
-    dx   = math.sqrt(max(vx,0)); dp = math.sqrt(max(vp,0))
-    probs= np.array([float(rho[n,n].real) for n in range(min(dim,30))])
-    qfi  = 4*vn
-    return dict(mean_n=round(mn,5), var_n=round(vn,5), purity=round(pur,6),
-                entropy=round(ent,6), mandel_Q=round(mq,5) if not math.isnan(mq) else None,
-                mean_x=round(mx,5), mean_p=round(mp,5),
-                delta_x=round(dx,6), delta_p=round(dp,6),
-                heis_prod=round(dx*dp,6), qfi=round(qfi,4), probs=probs)
+def _check(key):
+    if DATA[key] is None:
+        st.error(f"""
+        **Data file `data/{key}.pkl` not found.**  
+        Run `python generate_data.py` locally (requires QuTiP), then commit the `data/` folder to GitHub.
+        """)
+        return False
+    return True
 
-def _wnv(W, xvec):
-    dx = xvec[1]-xvec[0]
-    return float(np.sum(np.abs(W))*dx**2 - 1.0)
+# ════════════════════════════════════════════════════════════════════════════════
+# FIGURE HELPERS
+# ════════════════════════════════════════════════════════════════════════════════
 
-def _wrange(W):
+def _wigner_range(W):
     wmin, wmax = float(W.min()), float(W.max())
     if wmin >= 0: wmin = -1e-9
-    if wmax <= 0: wmax =  1e-9
-    lim = max(abs(wmin), abs(wmax))
-    return -lim, lim
+    if wmax <= 0: wmax = 1e-9
+    return wmin, wmax
 
-# State builders
-@st.cache_data(ttl=600, show_spinner=False)
-def mk_fock(n, dim):            return ket2dm(basis(dim,n)).full()
-@st.cache_data(ttl=600, show_spinner=False)
-def mk_coherent(re, im, dim):   return coherent_dm(dim, re+1j*im).full()
-@st.cache_data(ttl=600, show_spinner=False)
-def mk_squeezed(r, phi, dim):   return ket2dm(squeeze(dim,r*np.exp(1j*phi))*basis(dim,0)).full()
-@st.cache_data(ttl=600, show_spinner=False)
-def mk_thermal(nbar, dim):      return thermal_dm(dim, nbar).full()
-@st.cache_data(ttl=600, show_spinner=False)
-def mk_cat(re, im, sign, dim):
-    psi = (coherent(dim,re+1j*im) + sign*coherent(dim,-(re+1j*im))).unit()
-    return ket2dm(psi).full()
-@st.cache_data(ttl=600, show_spinner=False)
-def mk_ds(a_re, a_im, r, phi, dim):
-    psi = displace(dim,a_re+1j*a_im)*squeeze(dim,r*np.exp(1j*phi))*basis(dim,0)
-    return ket2dm(psi).full()
-@st.cache_data(ttl=600, show_spinner=False)
-def mk_gkp(delta, npeaks, dim):
-    psi = sum(np.exp(-delta**2*n**2)*displace(dim,n*np.sqrt(np.pi))*basis(dim,0)
-              for n in range(-npeaks, npeaks+1))
-    return ket2dm(psi.unit()).full()
-@st.cache_data(ttl=600, show_spinner=False)
-def mk_tmsv_reduced(r, dim):
-    lam  = np.tanh(r); norm = np.sqrt(1-lam**2)
-    from qutip import tensor as qt_tensor
-    psi  = sum(norm*(lam**n)*qt_tensor(basis(dim,n),basis(dim,n)) for n in range(dim))
-    rho2 = ket2dm(psi); rho2.dims = [[dim,dim],[dim,dim]]
-    return rho2.ptrace(0).full()
-
-# Channel ops
-@st.cache_data(ttl=600, show_spinner=False)
-def ch_disp(rho_arr, a_re, a_im):
-    rho=qt.Qobj(rho_arr); rho.dims=[[rho_arr.shape[0]],[rho_arr.shape[0]]]
-    D=displace(rho.shape[0],a_re+1j*a_im); return (D*rho*D.dag()).full()
-@st.cache_data(ttl=600, show_spinner=False)
-def ch_sq(rho_arr, r, phi):
-    rho=qt.Qobj(rho_arr); rho.dims=[[rho_arr.shape[0]],[rho_arr.shape[0]]]
-    S=squeeze(rho.shape[0],r*np.exp(1j*phi)); return (S*rho*S.dag()).full()
-@st.cache_data(ttl=600, show_spinner=False)
-def ch_phase(rho_arr, phi):
-    rho=qt.Qobj(rho_arr); rho.dims=[[rho_arr.shape[0]],[rho_arr.shape[0]]]
-    R=(-1j*phi*num(rho.shape[0])).expm(); return (R*rho*R.dag()).full()
-@st.cache_data(ttl=600, show_spinner=False)
-def ch_loss(rho_arr, gt):
-    rho=qt.Qobj(rho_arr); rho.dims=[[rho_arr.shape[0]],[rho_arr.shape[0]]]
-    dim=rho.shape[0]; a=destroy(dim)
-    H=qt.Qobj(np.zeros((dim,dim))); H.dims=[[dim],[dim]]
-    opts=Options(nsteps=15000)
-    res=mesolve(H,rho,np.linspace(0,gt,12),[np.sqrt(1.0)*a],[],options=opts)
-    return res.states[-1].full()
-
-# ══════════════════════════════════════════════════════════════════════════════
-# FIGURE BUILDERS
-# ══════════════════════════════════════════════════════════════════════════════
-
-def fig_wigner(W, xvec, title="W(x,p)", cs=None, height=430):
-    cs    = cs or W_CS
-    wmin, wmax = _wrange(W)
-    fig   = go.Figure()
+def fig_wigner(W_list, xvec, title="W(x,p)", height=400):
+    W    = np.array(W_list)
+    xv   = np.array(xvec)
+    wmin, wmax = _wigner_range(W)
+    fig  = go.Figure()
     fig.add_trace(go.Heatmap(
-        z=W, x=xvec, y=xvec,
-        colorscale=cs, zmin=wmin, zmax=wmax,
-        colorbar=dict(title=dict(text="W", font=dict(size=10,color="#e2e8f0")),
-                      len=0.82, thickness=14, tickfont=dict(color="#e2e8f0",size=9),
-                      outlinecolor="#2d1b69", outlinewidth=1),
-        hovertemplate="x=%{x:.2f}  p=%{y:.2f}  W=%{z:.5f}<extra></extra>",
+        z=W, x=xv, y=xv, colorscale=W_CS, zmin=wmin, zmax=wmax,
+        colorbar=dict(title="W", len=0.8, thickness=12, tickfont=dict(size=9, color="#e2e8f0")),
+        hovertemplate="x=%{x:.2f}  p=%{y:.2f}  W=%{z:.4f}<extra></extra>",
     ))
     fig.add_trace(go.Contour(
-        z=W, x=xvec, y=xvec,
-        contours=dict(start=0,end=0,size=1,coloring="none"),
-        line=dict(color="rgba(255,255,255,0.5)", width=1.3, dash="dot"),
-        showscale=False, hoverinfo="skip",
+        z=W, x=xv, y=xv,
+        contours=dict(start=0, end=0, size=1, coloring="none"),
+        line=dict(color="rgba(255,255,255,0.4)", width=1),
+        showscale=False,
     ))
-    fig.update_layout(**_T, height=height,
-        title=dict(text=f"<b>{title}</b>",
-                   font=dict(size=14, color="#a78bfa"), x=0.5),
-        xaxis_title="x  (quadrature)", yaxis_title="p  (momentum)",
-    )
+    fig.update_layout(**_LAY, height=height,
+        title=dict(text=f"<b>{title}</b>", font=dict(size=13, color="#6366f1"), x=0.5),
+        xaxis_title="x (position)", yaxis_title="p (momentum)")
     return fig
 
-def fig_husimi(Q, xvec, title="Q(α)", height=430):
+def fig_husimi(Q_list, xvec, title="Q(α)", height=400):
     fig = go.Figure(go.Heatmap(
-        z=Q, x=xvec, y=xvec,
+        z=np.array(Q_list), x=np.array(xvec), y=np.array(xvec),
         colorscale=Q_CS,
-        colorbar=dict(title=dict(text="Q", font=dict(size=10,color="#e2e8f0")),
-                      len=0.82, thickness=14, tickfont=dict(color="#e2e8f0",size=9),
-                      outlinecolor="#2d1b69", outlinewidth=1),
-        hovertemplate="Re(α)=%{x:.2f}  Im(α)=%{y:.2f}  Q=%{z:.5f}<extra></extra>",
+        colorbar=dict(title="Q", len=0.8, thickness=12, tickfont=dict(size=9, color="#e2e8f0")),
+        hovertemplate="Re(α)=%{x:.2f}  Im(α)=%{y:.2f}  Q=%{z:.4f}<extra></extra>",
     ))
-    fig.update_layout(**_T, height=height,
-        title=dict(text=f"<b>{title}</b>",
-                   font=dict(size=14, color="#22d3ee"), x=0.5),
-        xaxis_title="Re(α)", yaxis_title="Im(α)",
-    )
+    fig.update_layout(**_LAY, height=height,
+        title=dict(text=f"<b>{title}</b>", font=dict(size=13, color="#22d3ee"), x=0.5),
+        xaxis_title="Re(α)", yaxis_title="Im(α)")
     return fig
 
-def fig_density_matrix(rho_arr, display_dim=15, title="ρ", height=400):
-    d = min(display_dim, rho_arr.shape[0])
-    sub = make_subplots(1, 2, subplot_titles=["Re(ρ<sub>mn</sub>)", "Im(ρ<sub>mn</sub>)"],
-                        horizontal_spacing=0.09)
-    for ci, dat in enumerate([np.real(rho_arr[:d,:d]), np.imag(rho_arr[:d,:d])], 1):
-        vm = max(abs(dat).max(), 1e-6)
+def fig_density_matrix(rho_list, title="ρ", height=360):
+    rho = np.array(rho_list)
+    sub = make_subplots(1, 2, subplot_titles=["Re(ρ)", "Im(ρ)"], horizontal_spacing=0.08)
+    for ci, data in enumerate([np.real(rho), np.imag(rho)], 1):
+        vm = max(float(np.abs(data).max()), 1e-6)
         sub.add_trace(go.Heatmap(
-            z=dat, colorscale=DM_CS, zmid=0, zmin=-vm, zmax=vm,
-            showscale=(ci==1),
-            colorbar=dict(title=dict(text="ρ",font=dict(size=10)),
-                          x=1.02, len=0.88, thickness=12,
-                          tickfont=dict(color="#e2e8f0",size=9)),
-            hovertemplate="n=%{y}  m=%{x}<br>ρ=%{z:.5f}<extra></extra>",
+            z=data, colorscale=DM_CS, zmin=-vm, zmax=vm, showscale=(ci==1),
+            hovertemplate=f"n=%{{y}}  m=%{{x}}  val=%{{z:.4f}}<extra></extra>",
         ), row=1, col=ci)
-    sub.update_layout(**_T, height=height,
-        title=dict(text=f"<b>Density Matrix {title}</b>",
-                   font=dict(size=13, color="#22d3ee"), x=0.5),
-    )
-    sub.update_xaxes(title_text="m", title_font=dict(size=10))
-    sub.update_yaxes(title_text="n", title_font=dict(size=10))
+    sub.update_layout(**_LAY, height=height,
+        title=dict(text=f"<b>Density Matrix {title}</b>", font=dict(size=12, color="#6366f1"), x=0.5))
     return sub
 
-def fig_photon_dist(probs, mean_n, title="P(n)", height=340):
-    k   = np.arange(len(probs))
-    poi = np.array([
-        math.exp(-max(mean_n,1e-9))*(max(mean_n,1e-9)**ki)/math.factorial(int(ki))
-        if int(ki)<170 else 0.0 for ki in k
+def fig_photon_dist(probs_list, mean_n, title="Photon distribution P(n)", height=320):
+    probs = np.array(probs_list)
+    k     = np.arange(len(probs))
+    poi   = np.array([
+        math.exp(-max(mean_n,1e-9)) * (max(mean_n,1e-9)**ki) / math.factorial(int(ki))
+        if int(ki) < 170 else 0.0 for ki in k
     ])
     fig = go.Figure()
-    fig.add_trace(go.Bar(
-        x=k, y=probs, name="P(n)",
-        marker=dict(
-            color=probs,
-            colorscale=[[0,"#1e1b4b"],[0.5,"#7c3aed"],[1,"#a78bfa"]],
-            showscale=False, line=dict(color="rgba(0,0,0,0)"),
-        ),
-        opacity=0.9,
-    ))
+    fig.add_trace(go.Bar(x=k, y=probs, name="P(n)", marker_color="#6366f1", opacity=0.85))
     if mean_n > 0.01:
-        fig.add_trace(go.Scatter(x=k, y=poi, mode="lines+markers",
-            name="Poisson ref",
-            line=dict(color="#fbbf24", width=2, dash="dot"),
-            marker=dict(size=4, color="#fbbf24"),
-        ))
-    fig.update_layout(**_T, height=height, bargap=0.12,
-        title=dict(text=f"<b>{title}</b>", font=dict(size=13,color="#a78bfa"), x=0.5),
-        xaxis_title="Photon number n", yaxis_title="P(n)",
-    )
+        fig.add_trace(go.Scatter(x=k, y=poi, mode="lines+markers", name="Poisson ref",
+            line=dict(color="#fbbf24", width=2, dash="dot"), marker=dict(size=3)))
+    fig.update_layout(**_LAY, height=height,
+        title=dict(text=f"<b>{title}</b>", font=dict(size=12, color="#6366f1"), x=0.5),
+        xaxis_title="Photon number n", yaxis_title="Probability P(n)",
+        bargap=0.15)
     return fig
 
-def fig_wigner_3d(W, xvec, title="W(x,p) — 3D Surface", height=500):
-    wa  = max(abs(W.min()), abs(W.max()), 1e-6)
+def fig_wigner_3d(W_list, xvec, title="W(x,p) 3-D", height=460):
+    W  = np.array(W_list)
+    xv = np.array(xvec)
+    wa = max(float(np.abs(W).max()), 1e-6)
     fig = go.Figure(go.Surface(
-        z=W, x=xvec, y=xvec,
-        colorscale=W_CS, cmin=-wa, cmax=wa,
+        z=W, x=xv, y=xv, colorscale=W_CS, cmin=-wa, cmax=wa,
         showscale=True, opacity=0.93,
-        contours=dict(z=dict(show=True, usecolormap=True, project_z=True, width=1)),
-        colorbar=dict(title=dict(text="W",font=dict(size=10)),
-                      len=0.72, thickness=14, tickfont=dict(color="#e2e8f0",size=9)),
-        hovertemplate="x=%{x:.2f}  p=%{y:.2f}  W=%{z:.5f}<extra></extra>",
+        colorbar=dict(title="W", len=0.7, thickness=12, tickfont=dict(size=9, color="#e2e8f0")),
+        hovertemplate="x=%{x:.2f}  p=%{y:.2f}  W=%{z:.4f}<extra></extra>",
     ))
-    fig.update_layout(**_T, height=height,
-        title=dict(text=f"<b>{title}</b>", font=dict(size=14,color="#a78bfa"), x=0.5),
+    fig.update_layout(**_LAY, height=height,
+        title=dict(text=f"<b>{title}</b>", font=dict(size=13, color="#6366f1"), x=0.5),
         scene=dict(
-            xaxis=dict(title="x",gridcolor="#1e1e3f",backgroundcolor="#07091a",showbackground=True),
-            yaxis=dict(title="p",gridcolor="#1e1e3f",backgroundcolor="#07091a",showbackground=True),
-            zaxis=dict(title="W(x,p)",gridcolor="#1e1e3f",backgroundcolor="#07091a",showbackground=True),
-            bgcolor="#07091a",
-            camera=dict(eye=dict(x=1.4,y=1.4,z=0.9)),
-        ),
-    )
+            xaxis=dict(title="x", gridcolor="#0b1635", backgroundcolor="#020817"),
+            yaxis=dict(title="p", gridcolor="#0b1635", backgroundcolor="#020817"),
+            zaxis=dict(title="W(x,p)", gridcolor="#0b1635", backgroundcolor="#020817"),
+            bgcolor="#020817", camera=dict(eye=dict(x=1.4, y=1.4, z=0.9)),
+        ))
     return fig
 
-def metric_strip(m, wnv):
-    """Full metric strip — 7 + 4 cards."""
-    cols = st.columns(7)
-    mq   = m["mandel_Q"]
-    for col, (lbl, val) in zip(cols, [
-        ("⟨n̂⟩",    f"{m['mean_n']:.4f}"),
-        ("Purity",  f"{m['purity']:.5f}"),
-        ("Entropy", f"{m['entropy']:.4f}"),
-        ("Δx",      f"{m['delta_x']:.5f}"),
-        ("Δp",      f"{m['delta_p']:.5f}"),
-        ("ΔxΔp",    f"{m['heis_prod']:.5f}"),
-        ("WNV",     f"{wnv:.5f}"),
-    ]):
-        col.metric(lbl, val)
-    cols2 = st.columns(4)
-    for col, (lbl, val, hlp) in zip(cols2, [
-        ("Mandel Q", f"{mq:.4f}" if mq is not None else "N/A", "< 0 = sub-Poissonian"),
-        ("Var(n)",   f"{m['var_n']:.5f}", "Photon number variance"),
-        ("⟨x̂⟩",    f"{m['mean_x']:.4f}", "Mean position quadrature"),
-        ("⟨p̂⟩",    f"{m['mean_p']:.4f}", "Mean momentum quadrature"),
-    ]):
-        col.metric(lbl, val, help=hlp)
+def metrics_row(m: dict, wnv: float):
+    """Render a row of metric cards."""
+    cols = st.columns(6)
+    items = [
+        ("⟨n⟩", m.get('mean_n','—'), "Mean photon number"),
+        ("Purity", m.get('purity','—'), "Tr(ρ²)  [1=pure]"),
+        ("Entropy", m.get('entropy','—'), "von Neumann S(ρ)"),
+        ("Mandel Q", m.get('mandel_Q','N/A'), "<0 sub-Poissonian"),
+        ("Δx·Δp", m.get('heis_prod','—'), "Heisenberg product"),
+        ("WNV", round(wnv,5), "Wigner negativity vol."),
+    ]
+    for col, (lbl, val, help_txt) in zip(cols, items):
+        col.metric(label=lbl, value=str(val), help=help_txt)
 
-def nc_badge(wnv, m):
-    mq = m.get("mandel_Q")
-    if wnv > 1e-4:
-        return '<span class="nc-badge nc-quantum">⚡ NON-CLASSICAL — Wigner Negativity Detected</span>'
-    elif m.get("heis_prod",1) < 0.499:
-        return '<span class="nc-badge nc-squeezed">🔧 SQUEEZED — Below Shot-Noise Limit</span>'
-    elif mq is not None and mq < -0.01:
-        return '<span class="nc-badge nc-squeezed">📉 SUB-POISSONIAN — Quantum Statistics</span>'
-    else:
-        return '<span class="nc-badge nc-classical">☀️ CLASSICAL / GAUSSIAN</span>'
-
-# ══════════════════════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════════════════════════
 # SIDEBAR
-# ══════════════════════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════════════════════════
 def render_sidebar():
     st.sidebar.markdown("""
-    <div style="padding:18px 14px 12px; text-align:center;">
-      <div style="font-size:2.6rem; line-height:1;
-                  filter:drop-shadow(0 0 18px rgba(167,139,250,0.8));">⚛️</div>
-      <div style="font-family:'Inter',sans-serif; font-weight:900; font-size:0.98rem;
-                  color:#f1f5f9; letter-spacing:-0.01em; margin-top:10px; line-height:1.25;">
-        Quantum Phase Space<br>
-        <span style="font-size:0.72rem; font-weight:500; color:#7c3aed;">
-          Density Matrix & Wigner Function
-        </span>
-      </div>
-      <div style="font-family:'JetBrains Mono',monospace; font-size:0.64rem;
-                  color:#334155; margin-top:5px;">
-        IIT Jodhpur · m25iqt013
-      </div>
+    <div style="text-align:center;padding:18px 0 10px">
+        <div style="font-size:2.4rem;filter:drop-shadow(0 0 12px #6366f1)">⚛️</div>
+        <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:1.05rem;
+                    color:#e2e8f0;letter-spacing:0.05em;margin-top:6px">CV QUANTUM</div>
+        <div style="font-family:'Space Mono',monospace;font-size:0.68rem;color:#475569;
+                    margin-top:2px">IIT Jodhpur · m25iqt013</div>
     </div>
-    <hr style="border-color:#2d1b69; margin:0 0 10px 0;">
+    <hr style="border-color:#1a2d5a;margin:8px 0 16px">
     """, unsafe_allow_html=True)
 
     page = st.sidebar.radio(
-        "📑 **Navigate**",
-        ["🔬 Page 1 — State Explorer",
-         "🌌 Page 2 — Phase Space Zoo",
-         "🧪 Page 3 — Witness Lab",
-         "⚡ Page 4 — Channel Simulator",
-         "🔭 Page 5 — GBS Sampler"],
+        "NAVIGATE",
+        ["🔬 State Explorer",
+         "🌌 Phase Space Zoo",
+         "🧪 Witness Lab",
+         "⚡ Channel Simulator",
+         "🔭 GBS & Quantum ML"],
         label_visibility="visible",
     )
 
-    st.sidebar.markdown("<hr style='border-color:#2d1b69; margin:14px 0;'>",
-                        unsafe_allow_html=True)
-    st.sidebar.markdown(
-        "<div style='font-family:\"JetBrains Mono\",monospace; font-size:0.63rem;"
-        "color:#334155; text-align:center; line-height:1.9;'>"
-        "QuTiP · NumPy · Plotly · Streamlit<br>"
-        "© 2025 m25iqt013 — IIT Jodhpur</div>",
-        unsafe_allow_html=True,
-    )
+    st.sidebar.markdown("<hr style='border-color:#1a2d5a;margin:14px 0'>", unsafe_allow_html=True)
+    st.sidebar.markdown("""
+    <div style="font-family:'Space Mono',monospace;font-size:0.65rem;color:#334155;text-align:center;line-height:1.8">
+    DEPS: streamlit · plotly · numpy · pandas<br>
+    DATA: pre-computed (QuTiP + SF)<br>
+    © 2025 m25iqt013
+    </div>
+    """, unsafe_allow_html=True)
     return page
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════════════════════════
 # PAGE 1 — STATE EXPLORER
-# ══════════════════════════════════════════════════════════════════════════════
-def page_state_explorer():
-    st.markdown("""
-    <div class="banner">
-      <h1>🔬 State Explorer</h1>
-      <p>Interactive phase-space explorer — live QuTiP computation for all 8 CV quantum states</p>
-      <p>Adjust parameters with sliders · Instant Wigner · Husimi Q · Density matrix · Photon statistics</p>
-      <span class="tag">Wigner W(x,p)</span>
-      <span class="tag">Husimi Q(α)</span>
-      <span class="tag">Density Matrix ρ</span>
-      <span class="tag">Photon Statistics P(n)</span>
-      <span class="tag">8 Quantum States</span>
-    </div>""", unsafe_allow_html=True)
+# ════════════════════════════════════════════════════════════════════════════════
+STATE_INFO = {
+    "Fock |n⟩": {
+        "emoji": "🎯",
+        "color": "#f472b6",
+        "eq": "|n⟩  —  energy eigenstate  â†â|n⟩ = n|n⟩",
+        "desc": "Fock states have exactly **n** photons — perfect number certainty, maximum phase uncertainty. They are deeply non-classical: their Wigner function goes **negative**, a hallmark of quantum weirdness.",
+        "classical": False,
+    },
+    "Coherent |α⟩": {
+        "emoji": "💡",
+        "color": "#fbbf24",
+        "eq": "|α⟩ = e^{-|α|²/2} Σ (αⁿ/√n!) |n⟩",
+        "desc": "Coherent states are the **most classical** quantum states — laser light! Their Wigner function is a Gaussian, always positive. Minimum uncertainty: ΔxΔp = 1/2.",
+        "classical": True,
+    },
+    "Squeezed |r,φ⟩": {
+        "emoji": "🔧",
+        "color": "#6366f1",
+        "eq": "|r,φ⟩ = S(ξ)|0⟩,  ξ = r·e^{iφ}",
+        "desc": "Squeezing trades noise from one quadrature into the other. Below the **shot-noise limit** in x → noise in p amplified. Used in gravitational-wave detectors (LIGO).",
+        "classical": False,
+    },
+    "Thermal ρ_th": {
+        "emoji": "🌡️",
+        "color": "#fb923c",
+        "eq": "ρ_th = Σ (n̄ⁿ/(1+n̄)ⁿ⁺¹) |n⟩⟨n|",
+        "desc": "Thermal (blackbody) radiation. Mixed state with super-Poissonian photon statistics (Mandel Q > 0). The Wigner function is a broad Gaussian — classical, but noisy.",
+        "classical": True,
+    },
+    "Cat State": {
+        "emoji": "🐱",
+        "color": "#a3e635",
+        "eq": "|cat⟩ = N(|α⟩ ± |−α⟩)  (Schrödinger's cat)",
+        "desc": "Superposition of two coherent states — macroscopic quantum superposition. Shows spectacular **interference fringes** in the Wigner function, proving non-classicality.",
+        "classical": False,
+    },
+    "Displaced-Squeezed": {
+        "emoji": "🌀",
+        "color": "#22d3ee",
+        "eq": "|α,r⟩ = D(α)S(r)|0⟩",
+        "desc": "A squeezed state shifted in phase space. Combines displacement D(α) and squeezing S(r). Used in CV quantum key distribution (CV-QKD) protocols.",
+        "classical": False,
+    },
+    "GKP State": {
+        "emoji": "🛡️",
+        "color": "#c084fc",
+        "eq": "|GKP⟩ ∝ Σ_n e^{-δ²n²} D(n√π)|0⟩",
+        "desc": "Gottesman-Kitaev-Preskill code states: a superposition of displaced vacua forming a grid in phase space. The go-to state for **photonic quantum error correction**.",
+        "classical": False,
+    },
+}
 
-    col_ctrl, col_main = st.columns([1, 3], gap="medium")
+def page_state_explorer():
+    if not _check("states"): return
+    SD = DATA["states"]
+    xvec = SD["xvec"]
+
+    st.markdown("""
+    <div class="page-banner">
+        <h1>🔬 State Explorer</h1>
+        <p>Interactively explore all 8 continuous-variable quantum states.</p>
+        <p>Each state shows its Wigner function W(x,p), Husimi Q function, density matrix, and quantum metrics.</p>
+        <span class="tag">Wigner function</span><span class="tag">Husimi Q</span>
+        <span class="tag">Density matrix</span><span class="tag">Photon statistics</span>
+        <span class="tag">8 quantum states</span>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # ── Control panel ──
+    col_ctrl, col_main = st.columns([1, 3.2], gap="medium")
 
     with col_ctrl:
-        st.markdown("### ⚙️ State Controls")
-        state_type = st.selectbox("**Quantum State**", [
-            "Fock |n⟩", "Coherent |α⟩", "Squeezed |r,φ⟩",
-            "Thermal ρ̂_th", "Cat State", "Displaced-Squeezed",
-            "TMSV (EPR)", "GKP Grid State",
-        ])
-        dim  = st.slider("**Hilbert dim**", 20, 60, 35, 5,
-                         help="Fock space truncation dimension")
-        xres = st.slider("**Grid resolution**", 80, 200, 130, 20,
-                         help="Points per axis for W and Q computation")
-        xvec = np.linspace(-6, 6, xres)
-        st.markdown("---")
+        st.markdown("### ⚙️ Controls")
+        state_type = st.selectbox("**Quantum State**", list(STATE_INFO.keys()))
+        info = STATE_INFO[state_type]
 
-        rho_arr = None
+        st.markdown(f"""
+        <div style="background:rgba({
+            '99,102,241' if not info['classical'] else '251,191,36'
+        },0.08);border:1px solid rgba({
+            '99,102,241' if not info['classical'] else '251,191,36'
+        },0.25);border-radius:10px;padding:12px 14px;margin:10px 0">
+        <div style="font-size:1.4rem">{info['emoji']}</div>
+        <div style="font-family:'Space Mono',monospace;font-size:0.7rem;color:#94a3b8;margin:6px 0">
+            {'⚡ NON-CLASSICAL' if not info['classical'] else '☀️ CLASSICAL'}</div>
+        <div style="font-size:0.8rem;color:#cbd5e1;line-height:1.5">{info['desc']}</div>
+        </div>
+        """, unsafe_allow_html=True)
 
+        st.markdown(f"""<div class="eq-card">{info['eq']}</div>""", unsafe_allow_html=True)
+
+        # State-specific parameters (presets only — data already computed)
+        st.markdown("**Choose preset:**")
         if state_type == "Fock |n⟩":
-            n = st.slider("**n** (photon number)", 0, min(dim-1, 15), 3)
-            st.markdown(f"""<div class="eq-box">|n={n}⟩⟨n={n}|<br>Purity = 1 · Non-Gaussian · WNV &gt; 0</div>""",
-                        unsafe_allow_html=True)
-            rho_arr = mk_fock(n, dim)
-
+            preset = st.selectbox("Photon number n", [0,1,2,3,5])
+            key = preset; group = "fock"
         elif state_type == "Coherent |α⟩":
-            a_re = st.slider("**Re(α)**", -3.0, 3.0, 1.5, 0.1)
-            a_im = st.slider("**Im(α)**", -3.0, 3.0, 0.5, 0.1)
-            st.markdown(f"""<div class="eq-box">|α={a_re:+.2f}{a_im:+.2f}i⟩<br>Gaussian · Purity = 1 · ΔxΔp = ½</div>""",
-                        unsafe_allow_html=True)
-            rho_arr = mk_coherent(a_re, a_im, dim)
-
+            preset = st.selectbox("α (Re, Im)", ["0,0","1,0","2,0","1,1","2,2","-2,0","0,2"])
+            key = preset; group = "coherent"
         elif state_type == "Squeezed |r,φ⟩":
-            r   = st.slider("**r** (squeezing)", 0.0, 2.5, 0.8, 0.05)
-            phi = st.slider("**φ** (angle, π units)", 0.0, 2.0, 0.0, 0.1)
-            dB  = round(10*math.log10(math.exp(2*r)), 2) if r > 0 else 0
-            st.markdown(f"""<div class="eq-box">Ŝ(ξ)|0⟩  ξ = r·e^{{iφ}}<br>r = {r:.2f} ({dB} dB) · φ = {phi:.1f}π<br>Sub-shot-noise in x quadrature</div>""",
-                        unsafe_allow_html=True)
-            rho_arr = mk_squeezed(r, phi*math.pi, dim)
-
-        elif state_type == "Thermal ρ̂_th":
-            nbar = st.slider("**n̄** (mean photon number)", 0.1, 5.0, 1.0, 0.1)
-            st.markdown(f"""<div class="eq-box">ρ_th = Σ [n̄ⁿ/(n̄+1)^(n+1)] |n⟩⟨n|<br>n̄ = {nbar:.2f} · Mixed · Super-Poissonian</div>""",
-                        unsafe_allow_html=True)
-            rho_arr = mk_thermal(nbar, dim)
-
+            preset = st.selectbox("(r, φ)", ["0.5,0","1.0,0","1.5,0","2.0,0","1.0,1.57"])
+            key = preset; group = "squeezed"
+        elif state_type == "Thermal ρ_th":
+            preset = st.selectbox("n̄ (mean photons)", [0.5,1,2,5,10])
+            key = preset; group = "thermal"
         elif state_type == "Cat State":
-            a_re  = st.slider("**Re(α)**", 0.5, 3.5, 2.0, 0.1)
-            a_im  = st.slider("**Im(α)**", -2.0, 2.0, 0.0, 0.1)
-            parity = st.radio("**Parity**", ["+1  (even cat)", "-1  (odd cat)"])
-            sign  = +1 if "+1" in parity else -1
-            label = "even" if sign > 0 else "odd"
-            st.markdown(f"""<div class="eq-box">N±(|α⟩ ± |−α⟩)  [{label}]<br>α = {a_re:+.2f}{a_im:+.2f}i · Interference fringes</div>""",
-                        unsafe_allow_html=True)
-            rho_arr = mk_cat(a_re, a_im, sign, dim)
-
+            preset = st.selectbox("Cat type", ["even (|α⟩+|−α⟩)","odd (|α⟩−|−α⟩)","even α=2","odd α=2"])
+            key = {"even (|α⟩+|−α⟩)":"even","odd (|α⟩−|−α⟩)":"odd","even α=2":"even_2","odd α=2":"odd_2"}[preset]
+            group = "cat"
         elif state_type == "Displaced-Squeezed":
-            a_re = st.slider("**Re(α)**", -3.0, 3.0, 2.0, 0.1)
-            a_im = st.slider("**Im(α)**", -3.0, 3.0, 0.0, 0.1)
-            r    = st.slider("**r** (squeezing)", 0.0, 2.0, 0.8, 0.05)
-            phi  = st.slider("**φ** (angle, π)", 0.0, 2.0, 0.0, 0.1)
-            st.markdown(f"""<div class="eq-box">D̂(α)Ŝ(ξ)|0⟩ · α = {a_re:+.2f}{a_im:+.2f}i<br>r = {r:.2f} · φ = {phi:.1f}π · CV-QKD resource</div>""",
-                        unsafe_allow_html=True)
-            rho_arr = mk_ds(a_re, a_im, r, phi*math.pi, dim)
-
-        elif state_type == "TMSV (EPR)":
-            r    = st.slider("**r** (two-mode squeezing)", 0.1, 2.0, 1.0, 0.05)
-            dim2 = min(dim, 20)
-            EN   = 2*r/math.log(2)
-            st.markdown(f"""<div class="eq-box">Ŝ₂(r)|00⟩ · r = {r:.2f}<br>E_N = {EN:.3f} · Reduced single-mode state</div>""",
-                        unsafe_allow_html=True)
-            rho_arr = mk_tmsv_reduced(r, dim2)
-
+            preset = st.selectbox("(α, r, φ)", ["(1+i, 0.5, 0)","(2, 1.0, 0)","(1+2i, 0.8, π/2)"])
+            key = {"(1+i, 0.5, 0)":"(1+1j),0.5,0",
+                   "(2, 1.0, 0)":"(2+0j),1.0,0",
+                   "(1+2i, 0.8, π/2)":"(1+2j),0.8,1.57"}[preset]
+            group = "displaced_squeezed"
         else:  # GKP
-            delta  = st.slider("**δ** (envelope width)", 0.10, 0.60, 0.25, 0.05)
-            npeaks = st.slider("**n_max** (peaks)", 2, 6, 4, 1)
-            st.markdown(f"""<div class="eq-box">Σ exp(−δ²n²) D̂(n√π)|0⟩<br>δ = {delta:.2f} · Photonic error correction</div>""",
-                        unsafe_allow_html=True)
-            rho_arr = mk_gkp(delta, npeaks, dim)
+            preset = st.selectbox("(δ, peaks)", ["δ=0.3, 3 peaks","δ=0.5, 3 peaks"])
+            key = "0.3,3" if "0.3" in preset else "0.5,3"
+            group = "gkp"
 
-        st.markdown("---")
-        st.markdown("**Display Options**")
-        show_3d = st.checkbox("🏔️  3D Wigner Surface", False)
-        rep_sel = st.multiselect(
-            "**Representations**",
-            ["Wigner", "Husimi Q", "Density Matrix", "Photon Dist"],
-            default=["Wigner", "Husimi Q"],
-        )
+        view_3d = st.checkbox("🏔️ 3-D Wigner", value=False)
+        show_dm = st.checkbox("🔢 Show density matrix", value=True)
+
+    # ── Load state ──
+    try:
+        state_d = SD[group][key]
+    except KeyError:
+        keys = list(SD[group].keys())
+        state_d = SD[group][keys[0]]
+
+    m   = state_d['metrics']
+    wnv = state_d.get('wnv', 0.0)
 
     with col_main:
-        if rho_arr is None:
-            st.info("Select a state from the left panel.")
-            return
+        metrics_row(m, wnv)
+        st.markdown("<hr class='section-divider'>", unsafe_allow_html=True)
 
-        with st.spinner("⚛️  Computing phase space…"):
-            W   = _wigner(rho_arr, xvec)
-            Q   = _husimi(rho_arr, xvec)
-            m   = _metrics(rho_arr)
-            wnv = _wnv(W, xvec)
+        tab1, tab2, tab3, tab4 = st.tabs(["🌊 Wigner W(x,p)", "🌀 Husimi Q(α)", "📊 Photon dist.", "📐 Density matrix"])
 
-        # Metric strip
-        metric_strip(m, wnv)
-        st.markdown(
-            f"<div style='margin:10px 0 14px'>{nc_badge(wnv, m)}</div>",
-            unsafe_allow_html=True,
-        )
-        st.markdown("---")
+        with tab1:
+            if view_3d:
+                st.plotly_chart(fig_wigner_3d(state_d['W'], xvec, title=f"Wigner — {state_type}"), use_container_width=True)
+            else:
+                st.plotly_chart(fig_wigner(state_d['W'], xvec, title=f"Wigner — {state_type}"), use_container_width=True)
 
-        # 3D Wigner
-        if show_3d:
-            st.plotly_chart(
-                fig_wigner_3d(W, xvec, title=f"W(x,p) 3D — {state_type}"),
-                use_container_width=True,
-            )
-
-        # Representations
-        if "Wigner" in rep_sel and "Husimi Q" in rep_sel:
-            c1, c2 = st.columns(2)
-            c1.plotly_chart(fig_wigner(W, xvec, title=f"Wigner — {state_type}"),
-                            use_container_width=True)
-            c2.plotly_chart(fig_husimi(Q, xvec, title=f"Husimi Q — {state_type}"),
-                            use_container_width=True)
-        elif "Wigner" in rep_sel:
-            st.plotly_chart(fig_wigner(W, xvec, title=f"Wigner — {state_type}", height=500),
-                            use_container_width=True)
-        elif "Husimi Q" in rep_sel:
-            st.plotly_chart(fig_husimi(Q, xvec, title=f"Husimi Q — {state_type}", height=500),
-                            use_container_width=True)
-
-        if "Density Matrix" in rep_sel:
-            st.plotly_chart(
-                fig_density_matrix(rho_arr, min(18, dim), title=f"— {state_type}"),
-                use_container_width=True,
-            )
-            off_max = float(np.abs(rho_arr - np.diag(np.diag(rho_arr))).max())
+            neg_str = f"{wnv:.5f}" if wnv > 0.001 else "≈ 0"
+            # Physics-correct non-classicality: WNV>0 OR state is intrinsically non-classical (squeezed, cat, DS, GKP, Fock)
+            is_nonclassical = not info.get('classical', True)
+            if wnv > 0.001:
+                nc_text = "This state is <b>non-classical</b> — Wigner function goes negative. ⚡"
+            elif is_nonclassical:
+                nc_text = ("This state is <b>non-classical</b> (quantum). "
+                           "No Wigner negativity for this preset, but non-classicality is present "
+                           "(e.g. squeezed noise below shot-noise, quantum coherence, or sub-Poissonian statistics).")
+            else:
+                nc_text = "This state is <b>classical / Gaussian</b> — Wigner function is always positive."
             st.markdown(f"""
-            <div class="ins-card">
-              <div class="label">💡 Density Matrix</div>
-              <p>ρ encodes everything about the quantum state.  The diagonal ρ<sub>nn</sub> = P(n) gives photon probabilities.
-              Off-diagonal coherences signal superposition — max |ρ<sub>mn</sub>| = <b>{off_max:.5f}</b>.
-              Purity Tr(ρ²) = <b>{m['purity']:.5f}</b>
-              {'(pure ✅)' if m['purity'] > 0.999 else '(mixed — entropy > 0)'}.</p>
+            <div class="insight-card">
+                <div class="title">💡 What you're seeing</div>
+                <p>The Wigner function W(x,p) is a quasi-probability distribution in phase space.
+                <b>Red regions are negative</b> — impossible for classical states.
+                Wigner Negativity Volume = <b>{neg_str}</b>.
+                {nc_text}</p>
+            </div>
+            """, unsafe_allow_html=True)
+
+        with tab2:
+            st.plotly_chart(fig_husimi(state_d['Q'], xvec, title=f"Husimi Q — {state_type}"), use_container_width=True)
+            st.markdown("""
+            <div class="insight-card">
+                <div class="title">💡 Husimi Q-function</div>
+                <p>Q(α) = ⟨α|ρ|α⟩/π — always non-negative (unlike Wigner).
+                Brighter regions show where the state "lives" in phase space.
+                The Q-function is smoother and easier to measure but loses some quantum information.</p>
             </div>""", unsafe_allow_html=True)
 
-        if "Photon Dist" in rep_sel:
-            st.plotly_chart(
-                fig_photon_dist(m["probs"], m["mean_n"],
-                                title=f"P(n) — {state_type}"),
-                use_container_width=True,
-            )
-            mq = m["mandel_Q"]
+        with tab3:
+            st.plotly_chart(fig_photon_dist(m['probs'], m['mean_n'],
+                title=f"Photon number distribution P(n) — {state_type}"), use_container_width=True)
+            mq = m.get('mandel_Q')
             if mq is not None:
-                if mq < -0.001:
-                    regime = f"<b style='color:#f472b6'>Q = {mq:.4f} → Sub-Poissonian</b> (quantum signature)"
-                elif mq > 0.001:
-                    regime = f"<b style='color:#fbbf24'>Q = {mq:.4f} → Super-Poissonian</b> (thermal bunching)"
-                else:
-                    regime = f"<b style='color:#34d399'>Q ≈ 0 → Poissonian</b> (coherent statistics)"
+                regime = "sub-Poissonian (non-classical)" if mq < 0 else ("super-Poissonian" if mq > 0 else "Poissonian (coherent)")
                 st.markdown(f"""
-                <div class="ins-card">
-                  <div class="label">💡 Photon Statistics</div>
-                  <p>Mandel Q: {regime}.  Gold dashed line = Poisson reference (coherent state).
-                  Q &lt; 0 means fewer photon-number fluctuations than a laser — a quantum signature.</p>
+                <div class="insight-card">
+                    <div class="title">💡 Photon Statistics</div>
+                    <p>Mandel Q = {mq:.4f} → <b>{regime}</b>.
+                    Yellow line = Poisson reference (coherent state).
+                    Q &lt; 0 is a quantum signature: fewer photon-number fluctuations than a laser.</p>
                 </div>""", unsafe_allow_html=True)
 
-        # Wigner insight
-        if "Wigner" in rep_sel:
-            st.markdown(f"""
-            <div class="ins-card">
-              <div class="label">💡 Wigner Function</div>
-              <p>W(x,p) is a quasi-probability distribution.
-              <b>Negative regions</b> prove non-classicality — WNV = <b>{wnv:.5f}</b>.
-              The zero-contour (white dashed line) separates positive and negative regions.
-              Red/magenta = positive · Dark/blue = negative.</p>
+        with tab4:
+            if show_dm and 'rho' in state_d:
+                st.plotly_chart(fig_density_matrix(state_d['rho'], title=f"— {state_type}"), use_container_width=True)
+                st.markdown("""
+                <div class="insight-card">
+                    <div class="title">💡 Density matrix ρ</div>
+                    <p>ρ encodes everything about the quantum state. The diagonal gives P(n).
+                    Off-diagonal elements (coherences) are the signature of superposition.
+                    Pure states have Tr(ρ²)=1; mixed states have Tr(ρ²) &lt; 1.</p>
+                </div>""", unsafe_allow_html=True)
+            elif 'rho' not in state_d:
+                st.info("Density matrix not stored for this state type (reduce memory). Shown in Fock and Coherent states.")
+
+# ════════════════════════════════════════════════════════════════════════════════
+# PAGE 2 — PHASE SPACE ZOO
+# ════════════════════════════════════════════════════════════════════════════════
+def page_phase_space_zoo():
+    if not _check("states"): return
+    SD = DATA["states"]
+    xvec = SD["xvec"]
+
+    st.markdown("""
+    <div class="page-banner">
+        <h1>🌌 Phase Space Zoo</h1>
+        <p>Side-by-side comparison of Wigner, Husimi Q, and P-function for all quantum states.</p>
+        <p>Spot the non-classical signatures at a glance.</p>
+        <span class="tag">Side-by-side comparison</span><span class="tag">All 8 states</span>
+        <span class="tag">Non-classicality</span>
+    </div>
+    """, unsafe_allow_html=True)
+
+    rep = st.radio("**Representation**", ["Wigner W(x,p)", "Husimi Q(α)"], horizontal=True)
+
+    # Build a 2×4 grid of all states
+    state_configs = [
+        ("fock",              0,      "Fock |0⟩"),
+        ("fock",              2,      "Fock |2⟩"),
+        ("coherent",         "2,0",   "Coherent |2⟩"),
+        ("squeezed",         "1.0,0", "Squeezed r=1"),
+        ("thermal",           1,      "Thermal n̄=1"),
+        ("cat",              "even",  "Cat (even)"),
+        ("displaced_squeezed","(1+1j),0.5,0", "Disp-Sq"),
+        ("gkp",              "0.3,3", "GKP δ=0.3"),
+    ]
+
+    # Physics-correct non-classicality per state group (not just WNV>0)
+    _NC_GROUPS = {"fock", "squeezed", "cat", "displaced_squeezed", "gkp"}
+
+    cols = st.columns(4)
+    for idx, (group, key, label) in enumerate(state_configs):
+        try:
+            sd = SD[group][key]
+        except KeyError:
+            keys = list(SD[group].keys())
+            sd = SD[group][keys[0]]
+
+        wnv = sd.get('wnv', 0.0)
+        is_nonclassical = (group in _NC_GROUPS) or (wnv > 0.001)
+        data_arr = sd['W'] if "Wigner" in rep else sd['Q']
+        cs  = W_CS if "Wigner" in rep else Q_CS
+
+        W_np = np.array(data_arr)
+        xv   = np.array(xvec)
+        wmin, wmax = _wigner_range(W_np) if "Wigner" in rep else (float(W_np.min()), float(W_np.max()))
+
+        fig = go.Figure(go.Heatmap(
+            z=W_np, x=xv, y=xv, colorscale=cs, zmin=wmin, zmax=wmax,
+            showscale=False, hovertemplate=f"{label}<br>x=%{{x:.1f}}  p=%{{y:.1f}}<br>val=%{{z:.3f}}<extra></extra>",
+        ))
+        if "Wigner" in rep:
+            fig.add_trace(go.Contour(z=W_np, x=xv, y=xv,
+                contours=dict(start=0,end=0,size=1,coloring="none"),
+                line=dict(color="rgba(255,255,255,0.5)",width=1), showscale=False))
+        badge = "⚡ Non-classical" if is_nonclassical else "☀️ Classical / Gaussian"
+        fig.update_layout(
+            paper_bgcolor="#020817", plot_bgcolor="#060e24",
+            font=dict(color="#e2e8f0", size=9),
+            xaxis=dict(gridcolor="#0b1635", title="x/Re(α)", title_font=dict(size=9), tickfont=dict(size=7)),
+            yaxis=dict(gridcolor="#0b1635", title="p/Im(α)", title_font=dict(size=9), tickfont=dict(size=7)),
+            title=dict(text=f"<b>{label}</b><br><sup>{badge}</sup>", font=dict(size=11,color="#e2e8f0"), x=0.5),
+            margin=dict(l=32,r=8,t=50,b=30), height=260,
+        )
+        cols[idx % 4].plotly_chart(fig, use_container_width=True)
+
+    st.markdown("<hr class='section-divider'>", unsafe_allow_html=True)
+    st.markdown("### 📊 Non-classicality Scorecard")
+
+    rows = []
+    labels_full = ["Fock |0⟩","Fock |2⟩","Coherent |2⟩","Squeezed r=1","Thermal n̄=1","Cat (even)","Disp-Sq","GKP δ=0.3"]
+    for (group,key,label),lf in zip(state_configs, labels_full):
+        try:
+            sd = SD[group][key]
+        except KeyError:
+            sd = list(SD[group].values())[0]
+        m   = sd['metrics']
+        wnv = sd.get('wnv', 0.0)
+        is_nc = (group in _NC_GROUPS) or (wnv > 0.001)
+        rows.append({
+            "State": lf,
+            "Purity": m.get('purity','—'),
+            "Entropy S(ρ)": m.get('entropy','—'),
+            "Mandel Q": m.get('mandel_Q','—'),
+            "WNV": round(wnv,5),
+            "Non-classical": "✅" if is_nc else "❌",
+        })
+    df = pd.DataFrame(rows)
+    st.dataframe(df, use_container_width=True, hide_index=True)
+
+    st.markdown("""
+    <div class="insight-card" style="margin-top:12px">
+        <div class="title">💡 Reading the table</div>
+        <p><b>WNV</b> (Wigner Negativity Volume) > 0 is a rigorous proof of non-classicality.
+        <b>Mandel Q &lt; 0</b> = sub-Poissonian photon statistics (another quantum signature).
+        <b>Purity = 1</b> means pure state; <b>Entropy = 0</b> means no classical uncertainty.</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+# ════════════════════════════════════════════════════════════════════════════════
+# PAGE 3 — WITNESS LAB
+# ════════════════════════════════════════════════════════════════════════════════
+def page_witness_lab():
+    if not _check("states"): return
+    SD = DATA["states"]
+
+    st.markdown("""
+    <div class="page-banner">
+        <h1>🧪 Witness Lab</h1>
+        <p>Live quantum metrics and non-classicality witnesses across all states.</p>
+        <p>Compare purity, entropy, Mandel Q, Wigner negativity, and Heisenberg uncertainty.</p>
+        <span class="tag">Quantum witnesses</span><span class="tag">Metrics dashboard</span>
+        <span class="tag">Heisenberg uncertainty</span>
+    </div>
+    """, unsafe_allow_html=True)
+
+    _NC_GROUPS_W = {"fock", "squeezed", "cat", "displaced_squeezed", "gkp"}
+    all_states = []
+    STATE_KEYS = [
+        ("fock",0,"Fock |0⟩"),("fock",1,"Fock |1⟩"),("fock",2,"Fock |2⟩"),("fock",3,"Fock |3⟩"),
+        ("coherent","0,0","Coherent |0⟩"),("coherent","1,0","Coherent |1⟩"),("coherent","2,0","Coherent |2⟩"),
+        ("squeezed","0.5,0","Squeezed r=0.5"),("squeezed","1.0,0","Squeezed r=1"),("squeezed","2.0,0","Squeezed r=2"),
+        ("thermal",0.5,"Thermal n̄=0.5"),("thermal",1,"Thermal n̄=1"),("thermal",5,"Thermal n̄=5"),
+        ("cat","even","Cat even α=1.5"),("cat","odd","Cat odd α=1.5"),("cat","even_2","Cat even α=2"),
+        ("displaced_squeezed","(1+1j),0.5,0","Disp-Sq (1+i,0.5)"),
+        ("gkp","0.3,3","GKP δ=0.3"),
+    ]
+    for group, key, label in STATE_KEYS:
+        try:
+            sd = SD[group][key]
+        except KeyError:
+            continue
+        m   = sd['metrics']
+        wnv = sd.get('wnv', 0.0)
+        is_nc = (group in _NC_GROUPS_W) or (wnv > 0.001)
+        all_states.append({
+            "State": label, "⟨n⟩": m['mean_n'], "Purity": m['purity'],
+            "Entropy": m['entropy'], "Mandel Q": m.get('mandel_Q', float('nan')),
+            "Δx": m['delta_x'], "Δp": m['delta_p'], "ΔxΔp": m['heis_prod'],
+            "WNV": round(wnv, 5), "Non-classical": is_nc,
+        })
+
+    df = pd.DataFrame(all_states)
+
+    tab1, tab2, tab3, tab4 = st.tabs(["📊 Full table", "🌊 WNV comparison", "🔭 Purity vs Entropy", "⚖️ Heisenberg"])
+
+    with tab1:
+        # Color-coded dataframe
+        def color_nc(val):
+            return "color: #a3e635; font-weight:700" if val else "color: #64748b"
+        st.dataframe(
+            df.style.map(color_nc, subset=["Non-classical"])
+                    .format({"⟨n⟩":"{:.3f}","Purity":"{:.4f}","Entropy":"{:.4f}",
+                              "Mandel Q": lambda v: f"{v:.4f}" if v is not None and not (isinstance(v, float) and math.isnan(v)) else "—",
+                              "Δx":"{:.4f}","Δp":"{:.4f}","ΔxΔp":"{:.4f}","WNV":"{:.5f}"}),
+            use_container_width=True, height=480,
+        )
+
+    with tab2:
+        fig = go.Figure()
+        colors_nc = ["#f472b6" if row["Non-classical"] else "#fbbf24" for _, row in df.iterrows()]
+        fig.add_trace(go.Bar(
+            x=df["State"], y=df["WNV"], marker_color=colors_nc,
+            text=[f"{v:.4f}" for v in df["WNV"]], textposition="outside",
+            textfont=dict(size=8), name="WNV",
+        ))
+        fig.add_hline(y=0, line_color="white", line_dash="dash", line_width=1)
+        fig.update_layout(**_LAY, height=420,
+            title=dict(text="<b>Wigner Negativity Volume</b> — pink=non-classical, gold=classical",
+                       font=dict(size=13,color="#6366f1"), x=0.5),
+            xaxis_tickangle=-40, xaxis_title="", yaxis_title="WNV")
+        st.plotly_chart(fig, use_container_width=True)
+        st.markdown("""
+        <div class="insight-card">
+            <div class="title">💡 Wigner Negativity Volume (WNV)</div>
+            <p>WNV = ∫|W(x,p)|dxdp − 1.  Any WNV > 0 proves the state cannot be described classically.
+            Fock states, cat states, and GKP states all have WNV > 0.
+            Coherent and thermal states have WNV = 0.</p>
+        </div>""", unsafe_allow_html=True)
+
+    with tab3:
+        fig = go.Figure()
+        for nc, color, label in [(True,"#f472b6","Non-classical"),(False,"#fbbf24","Classical")]:
+            mask = df["Non-classical"]==nc
+            sub  = df[mask]
+            fig.add_trace(go.Scatter(
+                x=sub["Purity"], y=sub["Entropy"], mode="markers+text",
+                marker=dict(color=color, size=12, symbol="diamond" if nc else "circle",
+                            line=dict(color="white",width=0.5)),
+                text=sub["State"], textposition="top center",
+                textfont=dict(size=7), name=label,
+            ))
+        fig.update_layout(**_LAY, height=430,
+            title=dict(text="<b>Purity Tr(ρ²) vs von Neumann Entropy S(ρ)</b>",
+                       font=dict(size=13,color="#6366f1"), x=0.5),
+            xaxis_title="Purity Tr(ρ²)", yaxis_title="Entropy S(ρ) [bits]")
+        st.plotly_chart(fig, use_container_width=True)
+        st.markdown("""
+        <div class="insight-card">
+            <div class="title">💡 Purity vs Entropy</div>
+            <p>Pure states (Purity=1, Entropy=0) sit top-left. Thermal states are the most mixed.
+            For pure states: Purity = 1 always. For mixed states: Purity &lt; 1 and Entropy > 0.
+            Note: non-classicality ≠ purity — a pure coherent state is classical!</p>
+        </div>""", unsafe_allow_html=True)
+
+    with tab4:
+        fig = go.Figure()
+        fig.add_trace(go.Bar(
+            x=df["State"], y=df["ΔxΔp"],
+            marker=dict(color=df["ΔxΔp"], colorscale="Viridis", showscale=True,
+                        colorbar=dict(title="ΔxΔp", thickness=10, len=0.7)),
+            text=[f"{v:.4f}" for v in df["ΔxΔp"]], textposition="outside", textfont=dict(size=7),
+        ))
+        fig.add_hline(y=0.5, line_color="#a3e635", line_dash="dash",
+                      annotation_text="Heisenberg limit: ΔxΔp = ½",
+                      annotation_font=dict(color="#a3e635", size=10))
+        fig.update_layout(**_LAY, height=420,
+            title=dict(text="<b>Heisenberg Uncertainty Product Δx·Δp</b>",
+                       font=dict(size=13,color="#6366f1"), x=0.5),
+            xaxis_tickangle=-40, xaxis_title="", yaxis_title="Δx · Δp")
+        st.plotly_chart(fig, use_container_width=True)
+        st.markdown("""
+        <div class="eq-card">
+        Heisenberg Uncertainty Principle:  Δx · Δp ≥ ½<br>
+        Minimum uncertainty states (Δx·Δp = ½): Coherent, Squeezed (along squeezed direction)<br>
+        Thermal/mixed states: Δx·Δp > ½  (excess classical noise)
+        </div>""", unsafe_allow_html=True)
+
+# ════════════════════════════════════════════════════════════════════════════════
+# PAGE 4 — CHANNEL SIMULATOR
+# ════════════════════════════════════════════════════════════════════════════════
+def page_channel_simulator():
+    if not _check("channels"): return
+    CD = DATA["channels"]
+    xvec = CD["xvec"]
+
+    st.markdown("""
+    <div class="page-banner">
+        <h1>⚡ Channel Simulator</h1>
+        <p>Watch a coherent state evolve through displacement D(α), squeezing S(r), phase shifts R(φ), and loss channels.</p>
+        <p>Each operation is pre-computed with the full Lindblad master equation.</p>
+        <span class="tag">Displacement D(α)</span><span class="tag">Squeezing S(r)</span>
+        <span class="tag">Phase shift R(φ)</span><span class="tag">Loss channel (Lindblad)</span>
+    </div>
+    """, unsafe_allow_html=True)
+
+    channel = st.radio("**Select Channel**",
+        ["💫 Displacement D(α)", "🔧 Squeezing S(r)", "🔄 Phase shift R(φ)", "📉 Loss (Lindblad)"],
+        horizontal=True)
+
+    tab1, tab2 = st.tabs(["🌊 Wigner evolution", "📊 Metrics evolution"])
+
+    if "Displacement" in channel:
+        series = CD["displacement_sweep"]
+        param  = [s["alpha_re"] for s in series]
+        param_label = "α (real part)"
+        title_fn = lambda v: f"D({v:.1f}) — Displacement"
+        x_label = "Displacement α"
+    elif "Squeezing" in channel:
+        series = CD["squeezing_sweep"]
+        param  = [s["r"] for s in series]
+        param_label = "Squeezing r"
+        title_fn = lambda v: f"S({v:.1f}) — Squeezed coherent"
+        x_label = "Squeezing parameter r"
+    elif "Phase" in channel:
+        series = CD["phase_sweep"]
+        param  = [round(s["phi"],2) for s in series]
+        param_label = "Phase φ"
+        title_fn = lambda v: f"R({v:.2f}rad) — Phase rotated"
+        x_label = "Phase shift φ (rad)"
+    else:
+        series = CD["loss_sweep"]
+        param  = [s["gamma_t"] for s in series]
+        param_label = "γt (loss)"
+        title_fn = lambda v: f"Loss γt={v:.1f}"
+        x_label = "γt (loss parameter)"
+
+    with tab1:
+        idx = st.slider(f"**{param_label}**", 0, len(series)-1, 0,
+                        format=f"step %d/{len(series)-1}")
+        s = series[idx]
+        pval = param[idx]
+        st.plotly_chart(fig_wigner(s["W"], xvec, title=title_fn(pval), height=440), use_container_width=True)
+
+        # Show 3 snapshots side-by-side
+        st.markdown("**Evolution snapshots:**")
+        snap_idx = [0, len(series)//2, len(series)-1]
+        snap_cols = st.columns(3)
+        for ci, si in enumerate(snap_idx):
+            sv = series[si]
+            pv = param[si]
+            W_np = np.array(sv["W"], dtype=float)
+            xv   = np.array(xvec, dtype=float)
+            if W_np.ndim != 2:
+                continue
+            wmin, wmax = _wigner_range(W_np)
+            fig = go.Figure(go.Heatmap(z=W_np, x=xv, y=xv, colorscale=W_CS, zmin=wmin, zmax=wmax, showscale=False))
+            fig.update_layout(
+                paper_bgcolor="#020817", plot_bgcolor="#060e24",
+                xaxis=dict(gridcolor="#0b1635", tickfont=dict(size=7)),
+                yaxis=dict(gridcolor="#0b1635", tickfont=dict(size=7)),
+                title=dict(text=f"<b>{title_fn(pv)}</b>", font=dict(size=10,color="#22d3ee"), x=0.5),
+                margin=dict(l=24,r=8,t=36,b=20), height=220,
+            )
+            snap_cols[ci].plotly_chart(fig, use_container_width=True)
+
+    with tab2:
+        purities  = [s["metrics"]["purity"]  for s in series]
+        entropies = [s["metrics"]["entropy"]  for s in series]
+        mean_ns   = [s["metrics"]["mean_n"]   for s in series]
+
+        fig = make_subplots(1, 3, subplot_titles=["Purity Tr(ρ²)","von Neumann Entropy","⟨n⟩ Mean photons"])
+        for col, (ys, color, name) in enumerate([
+            (purities,  "#6366f1", "Purity"),
+            (entropies, "#f472b6", "Entropy"),
+            (mean_ns,   "#22d3ee", "⟨n⟩"),
+        ], 1):
+            fig.add_trace(go.Scatter(x=param, y=ys, mode="lines+markers",
+                line=dict(color=color, width=2.5), marker=dict(size=5), name=name), row=1, col=col)
+
+        fig.update_layout(**_LAY, height=340,
+            title=dict(text=f"<b>Metrics vs {param_label}</b>", font=dict(size=13,color="#6366f1"), x=0.5))
+        st.plotly_chart(fig, use_container_width=True)
+
+    # Educational box
+    channel_theory = {
+        "Displacement": (
+            "D(α) = exp(αa† − α*a)",
+            "Displacement shifts the state rigidly in phase space. |⟨n⟩| increases with |α|. "
+            "Purity is unchanged — a pure state stays pure. Used in CV teleportation correction."
+        ),
+        "Squeezing": (
+            "S(r) = exp(r(a² − a†²)/2)",
+            "Squeezing stretches the Wigner function in one direction and compresses the other. "
+            "The area (and purity) is conserved. Below-shot-noise noise is the key resource for LIGO."
+        ),
+        "Phase": (
+            "R(φ) = exp(iφ a†a)",
+            "Phase rotation spins the Wigner function in phase space. Purity is perfectly conserved. "
+            "A full 2π rotation returns the state to itself."
+        ),
+        "Loss": (
+            "dρ/dt = γ(aρa† − ½a†aρ − ½ρa†a)",
+            "The loss channel is the most physically relevant: every photon absorbed by the environment "
+            "increases entropy and decreases purity. A coherent state remains coherent but its amplitude decays."
+        ),
+    }
+    key_ch = [k for k in channel_theory if k.lower() in channel.lower()][0]
+    eq, desc = channel_theory[key_ch]
+    st.markdown(f"""
+    <div class="eq-card" style="margin-top:16px">
+        <b>Theory:</b>  {eq}
+    </div>
+    <div class="insight-card">
+        <div class="title">💡 Physical intuition</div>
+        <p>{desc}</p>
+    </div>""", unsafe_allow_html=True)
+
+# ════════════════════════════════════════════════════════════════════════════════
+# PAGE 5 — GBS & QUANTUM ML
+# ════════════════════════════════════════════════════════════════════════════════
+def page_gbs_sampler():
+    if not _check("gbs"): return
+    GD = DATA["gbs"]
+
+    st.markdown("""
+    <div class="page-banner">
+        <h1>🔭 Gaussian Boson Sampling & CV-QML</h1>
+        <p>Xanadu-grade: GBS circuits, hafnian sampling, photon-number distributions, and CV quantum machine learning.</p>
+        <p>Data from real Strawberry Fields simulation (or analytic computation if SF unavailable).</p>
+        <span class="tag">Strawberry Fields</span><span class="tag">Hafnian (#P-hard)</span>
+        <span class="tag">PennyLane CV-QML</span><span class="tag">GBS advantage</span>
+    </div>
+    """, unsafe_allow_html=True)
+
+    tab1, tab2, tab3, tab4 = st.tabs(["🔭 GBS Circuit", "📊 Photon statistics", "∑ Hafnian", "🤖 CV-QML"])
+
+    # Pick dataset
+    avail = {k:v for k,v in GD.items() if isinstance(v,dict) and 'mean_photons' in v}
+    mode_options = list(avail.keys())
+
+    with tab1:
+        st.markdown("### Gaussian Boson Sampling Circuit")
+        if mode_options:
+            sel_key = st.selectbox("**GBS configuration**", mode_options,
+                                    format_func=lambda k: f"{'SF' if 'sf' in k else 'Analytic'} — {GD[k]['N_modes']} modes, r≈{GD[k]['r_vals'][0]:.2f}")
+            gbs = GD[sel_key]
+            source_tag = "🍓 Strawberry Fields (real simulation)" if gbs.get('source')=='strawberryfields' else "📐 Analytic GBS (exact Gaussian computation)"
+            st.markdown(f"<span class='state-badge badge-classical' style='margin-bottom:10px;display:inline-block'>{source_tag}</span>", unsafe_allow_html=True)
+
+            # Circuit diagram via plotly
+            N = gbs['N_modes']
+            fig_circ = go.Figure()
+            # Mode wires
+            for i in range(N):
+                fig_circ.add_shape(type="line", x0=0, x1=4.5, y0=i, y1=i,
+                                    line=dict(color="#1a2d5a", width=2))
+                fig_circ.add_annotation(x=-0.2, y=i, text=f"|0⟩", showarrow=False,
+                                         font=dict(color="#22d3ee", size=11, family="Space Mono"))
+                # Squeezing gate
+                r_i = gbs['r_vals'][i] if i < len(gbs['r_vals']) else gbs['r_vals'][0]
+                fig_circ.add_shape(type="rect", x0=0.3, x1=1.2, y0=i-0.28, y1=i+0.28,
+                    line=dict(color="#6366f1", width=2), fillcolor="rgba(99,102,241,0.2)")
+                fig_circ.add_annotation(x=0.75, y=i, text=f"S({r_i:.1f})", showarrow=False,
+                    font=dict(color="#c7d2fe", size=9, family="Space Mono"))
+                # Interferometer block
+                fig_circ.add_annotation(x=4.8, y=i, text=f"n̄={gbs['mean_photons'][i]:.2f}", showarrow=False,
+                    font=dict(color="#fbbf24", size=10, family="Space Mono"))
+            # Interferometer box
+            fig_circ.add_shape(type="rect", x0=1.5, x1=3.5, y0=-0.5, y1=N-0.5,
+                line=dict(color="#22d3ee", width=2), fillcolor="rgba(34,211,238,0.06)")
+            fig_circ.add_annotation(x=2.5, y=(N-1)/2, text="Interferometer U", showarrow=False,
+                font=dict(color="#22d3ee", size=12, family="Space Mono"))
+            # Measurement
+            for i in range(N):
+                fig_circ.add_shape(type="rect", x0=3.7, x1=4.5, y0=i-0.28, y1=i+0.28,
+                    line=dict(color="#f472b6",width=2), fillcolor="rgba(244,114,182,0.1)")
+                fig_circ.add_annotation(x=4.1, y=i, text="⟨n⟩", showarrow=False,
+                    font=dict(color="#f9a8d4", size=9, family="Space Mono"))
+            fig_circ.update_layout(
+                paper_bgcolor="#020817", plot_bgcolor="#060e24",
+                xaxis=dict(visible=False, range=[-0.5, 6]),
+                yaxis=dict(visible=False, range=[-0.8, N+0.1]),
+                height=max(240, N*55+40),
+                title=dict(text=f"<b>GBS Circuit — {N} modes</b>", font=dict(size=13,color="#6366f1"), x=0.5),
+                margin=dict(l=10,r=10,t=50,b=10),
+            )
+            st.plotly_chart(fig_circ, use_container_width=True)
+
+            # Wigner functions per mode
+            st.markdown("**Wigner functions per mode (after interferometer):**")
+            xvec_sf = np.array(gbs['xvec'])
+            n_show  = min(N, 4)
+            w_cols  = st.columns(n_show)
+            for i in range(n_show):
+                W_i  = np.array(gbs['wigners'][i if isinstance(list(gbs['wigners'].keys())[0], int) else str(i)])
+                wmin, wmax = _wigner_range(W_i)
+                fig_wi = go.Figure(go.Heatmap(z=W_i, x=xvec_sf, y=xvec_sf, colorscale=W_CS,
+                    zmin=wmin, zmax=wmax, showscale=False))
+                fig_wi.update_layout(paper_bgcolor="#020817", plot_bgcolor="#060e24",
+                    xaxis=dict(gridcolor="#0b1635", tickfont=dict(size=7)),
+                    yaxis=dict(gridcolor="#0b1635", tickfont=dict(size=7)),
+                    title=dict(text=f"<b>Mode {i}</b>", font=dict(size=10,color="#22d3ee"), x=0.5),
+                    margin=dict(l=20,r=6,t=34,b=16), height=200)
+                w_cols[i].plotly_chart(fig_wi, use_container_width=True)
+
+        st.markdown("""
+        <div class="eq-card">
+        GBS = N squeezed modes → random interferometer → photon-number detection<br>
+        Quantum advantage: sampling from this distribution is #P-hard classically!<br>
+        Applications: molecular vibronic spectra, graph optimization, drug discovery
+        </div>""", unsafe_allow_html=True)
+
+    with tab2:
+        if mode_options:
+            gbs = GD[mode_options[0]]
+            # Mean photons per mode
+            fig_mn = go.Figure(go.Bar(
+                x=[f"Mode {i}" for i in range(len(gbs['mean_photons']))],
+                y=[float(v) for v in gbs['mean_photons']],
+                marker_color="#6366f1", opacity=0.85,
+                text=[f"{v:.3f}" for v in gbs['mean_photons']], textposition="outside",
+            ))
+            fig_mn.update_layout(**_LAY, height=300,
+                title=dict(text="<b>Mean photon number ⟨n⟩ per mode</b>", font=dict(size=12,color="#6366f1"), x=0.5),
+                xaxis_title="Mode", yaxis_title="⟨n⟩")
+            st.plotly_chart(fig_mn, use_container_width=True)
+
+            # Single-mode photon distribution
+            pn = np.array(gbs['photon_dist']); ns = np.array(gbs['photon_ns'])
+            fig_pn = go.Figure(go.Bar(x=ns, y=pn, marker_color="#f472b6", opacity=0.85, name="P(n)"))
+            nbar = gbs['mean_photons'][0]
+            if nbar > 0:
+                poi = (float(nbar)/(1+float(nbar)))**ns/(1+float(nbar))
+                fig_pn.add_trace(go.Scatter(x=ns, y=poi, mode="lines", name="Thermal ref",
+                    line=dict(color="#fbbf24", dash="dot", width=2)))
+            fig_pn.update_layout(**_LAY, height=300,
+                title=dict(text="<b>Mode 0 — Photon number distribution P(n)</b>", font=dict(size=12,color="#f472b6"), x=0.5),
+                xaxis_title="n", yaxis_title="P(n)")
+            st.plotly_chart(fig_pn, use_container_width=True)
+
+            st.markdown("""
+            <div class="insight-card">
+                <div class="title">💡 GBS photon statistics</div>
+                <p>Each squeezed mode after the interferometer follows a thermal-like distribution with n̄ = sinh²(r).
+                The <b>joint</b> distribution across all modes is what's hard to sample — its probability is proportional to |Haf(A_S)|².</p>
             </div>""", unsafe_allow_html=True)
 
-
-# ══════════════════════════════════════════════════════════════════════════════
-# PAGE 2 — PHASE SPACE ZOO
-# ══════════════════════════════════════════════════════════════════════════════
-def page_phase_space_zoo():
-    st.markdown("""
-    <div class="banner">
-      <h1>🌌 Phase Space Zoo</h1>
-      <p>All 8 quantum states side-by-side with full parameter control</p>
-      <p>Toggle Wigner / Husimi Q / Compare · Adjust all parameters live · Metrics table</p>
-      <span class="tag">8 States</span>
-      <span class="tag">Wigner · Husimi</span>
-      <span class="tag">Non-classicality</span>
-    </div>""", unsafe_allow_html=True)
-
-    with st.sidebar:
-        st.markdown("### 🌌 Zoo Controls")
-        xres_z  = st.slider("Grid resolution", 60, 160, 90, 10)
-        dim_z   = st.slider("Hilbert dim", 20, 50, 30, 5)
-        rep_z   = st.radio("Representation", ["Wigner W(x,p)", "Husimi Q(α)", "Compare W vs Q"])
-        n_fock  = st.slider("n (Fock)", 0, 8, 2)
-        alpha_z = st.slider("|α| (Coherent)", 0.5, 3.0, 2.0, 0.1)
-        r_sq    = st.slider("r (Squeezed)", 0.1, 2.0, 0.9, 0.05)
-        nbar_th = st.slider("n̄ (Thermal)", 0.1, 4.0, 1.0, 0.1)
-        r_cat   = st.slider("|α| (Cat)", 0.5, 3.0, 2.0, 0.1)
-        r_ds    = st.slider("r (Disp-Sq)", 0.1, 1.5, 0.8, 0.05)
-        r_tmsv  = st.slider("r (TMSV)", 0.1, 1.5, 0.8, 0.05)
-        d_gkp   = st.slider("δ (GKP)", 0.1, 0.5, 0.25, 0.05)
-
-    xvec_z = np.linspace(-6, 6, xres_z)
-
-    with st.spinner("⚛️  Building all states…"):
-        states_raw = {
-            f"Fock |{n_fock}⟩"      : mk_fock(n_fock, dim_z),
-            f"Coherent |{alpha_z}⟩"  : mk_coherent(alpha_z, 0.0, dim_z),
-            f"Squeezed r={r_sq:.2f}"  : mk_squeezed(r_sq, 0.0, dim_z),
-            f"Thermal n̄={nbar_th:.1f}": mk_thermal(nbar_th, dim_z),
-            f"Cat |{r_cat}⟩ even"    : mk_cat(r_cat, 0.0, +1, dim_z),
-            f"Disp-Sq r={r_ds:.2f}"  : mk_ds(1.5, 0.0, r_ds, 0.0, dim_z),
-            "TMSV reduced"           : mk_tmsv_reduced(r_tmsv, min(dim_z, 18)),
-            f"GKP δ={d_gkp:.2f}"     : mk_gkp(d_gkp, 4, dim_z),
-        }
-        Ws, Qs, mets = {}, {}, {}
-        for lbl, arr in states_raw.items():
-            Ws[lbl]   = _wigner(arr, xvec_z)
-            Qs[lbl]   = _husimi(arr, xvec_z)
-            mets[lbl] = _metrics(arr)
-
-    labels = list(states_raw.keys())
-
-    def _tile(W_or_Q, lbl, cs, is_W, ht=280):
-        arr = np.array(W_or_Q)
-        neg = _wnv(arr, xvec_z) if is_W else 0
-        wmin, wmax = _wrange(arr) if is_W else (float(arr.min()), float(arr.max()))
-        badge_col  = "#f472b6" if neg > 1e-4 else "#fbbf24"
-        badge_txt  = f"⚡ WNV={neg:.4f}" if neg > 1e-4 else "☀️ Classical"
-        fig = go.Figure()
-        fig.add_trace(go.Heatmap(z=arr, x=xvec_z, y=xvec_z,
-            colorscale=cs, zmin=wmin, zmax=wmax, showscale=False,
-            hovertemplate=f"<b>{lbl}</b><br>x=%{{x:.2f}} p=%{{y:.2f}}<br>val=%{{z:.4f}}<extra></extra>"))
-        if is_W:
-            fig.add_trace(go.Contour(z=arr, x=xvec_z, y=xvec_z,
-                contours=dict(start=0,end=0,size=1,coloring="none"),
-                line=dict(color="rgba(255,255,255,0.55)",width=1.2),
-                showscale=False, hoverinfo="skip"))
-        fig.update_layout(
-            paper_bgcolor="#07091a", plot_bgcolor="#0d0e24",
-            font=dict(color="#e2e8f0", size=9),
-            xaxis=dict(gridcolor="#1e1e3f", tickfont=dict(size=7), title="x", title_font=dict(size=8)),
-            yaxis=dict(gridcolor="#1e1e3f", tickfont=dict(size=7), title="p", title_font=dict(size=8)),
-            title=dict(text=f"<b>{lbl}</b><br><sup style='color:{badge_col}'>{badge_txt}</sup>",
-                       font=dict(size=10,color="#e2e8f0"), x=0.5),
-            margin=dict(l=30,r=8,t=48,b=26), height=ht,
-        )
-        return fig
-
-    def _grid(data_dict, cs, is_W):
-        lbls = list(data_dict.keys())
-        rows = [lbls[i:i+4] for i in range(0, len(lbls), 4)]
-        for row in rows:
-            cols = st.columns(len(row))
-            for col, lbl in zip(cols, row):
-                col.plotly_chart(_tile(data_dict[lbl], lbl, cs, is_W),
-                                 use_container_width=True)
-
-    if rep_z in ["Wigner W(x,p)", "Compare W vs Q"]:
-        st.markdown("#### 🌀 Wigner Function W(x,p)")
-        _grid(Ws, W_CS, True)
-
-    if rep_z in ["Husimi Q(α)", "Compare W vs Q"]:
-        st.markdown("#### 🔶 Husimi Q Function Q(α)")
-        _grid(Qs, Q_CS, False)
-
-    st.markdown("---")
-    st.markdown("### 📊 Metrics Comparison Table")
-    rows_t = []
-    for lbl in labels:
-        mm  = mets[lbl]; W = Ws[lbl]; neg = _wnv(W, xvec_z)
-        nc  = ("✅ Non-classical" if neg > 1e-4
-               else ("🔧 Squeezed" if mm["heis_prod"] < 0.499 else "☀️ Classical"))
-        rows_t.append({
-            "State": lbl, "⟨n̂⟩": mm["mean_n"], "Purity": mm["purity"],
-            "Entropy": mm["entropy"], "Δx": mm["delta_x"], "Δp": mm["delta_p"],
-            "ΔxΔp": mm["heis_prod"], "WNV": round(neg, 5),
-            "Mandel Q": mm["mandel_Q"] if mm["mandel_Q"] is not None else float("nan"),
-            "Class": nc,
-        })
-    df_z = pd.DataFrame(rows_t).set_index("State")
-    st.dataframe(
-        df_z.style
-            .background_gradient(cmap="Purples", subset=["WNV"])
-            .background_gradient(cmap="Blues",   subset=["Purity"])
-            .format({"⟨n̂⟩":":.4f","Purity":":.5f","Entropy":":.4f",
-                     "Δx":":.5f","Δp":":.5f","ΔxΔp":":.5f","WNV":":.5f",
-                     "Mandel Q": lambda v: f"{v:.4f}" if not (isinstance(v,float) and math.isnan(v)) else "—"}),
-        use_container_width=True,
-    )
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# PAGE 3 — WITNESS LAB
-# ══════════════════════════════════════════════════════════════════════════════
-def page_witness_lab():
-    st.markdown("""
-    <div class="banner">
-      <h1>🧪 Witness Lab</h1>
-      <p>Live non-classicality witnesses · All 8 states · All measures simultaneously</p>
-      <p>Wigner negativity · Mandel Q · Purity · Entropy · Heisenberg · QFI · Radar chart</p>
-      <span class="tag">WNV Witness</span>
-      <span class="tag">Mandel Q</span>
-      <span class="tag">QFI</span>
-      <span class="tag">Heisenberg ΔxΔp</span>
-    </div>""", unsafe_allow_html=True)
-
-    with st.sidebar:
-        st.markdown("### 🧪 Witness Controls")
-        dim_w   = st.slider("Hilbert dim", 20, 50, 30, 5)
-        xres_w  = st.slider("Grid resolution", 60, 140, 80, 10)
-        alpha_w = st.slider("|α|", 0.5, 3.0, 2.0, 0.1)
-        r_w     = st.slider("r (squeezing)", 0.1, 2.0, 1.0, 0.05)
-        nbar_w  = st.slider("n̄ (thermal)", 0.1, 4.0, 1.0, 0.1)
-        cat_a_w = st.slider("|α| cat", 0.5, 3.0, 2.0, 0.1)
-
-    xvec_w = np.linspace(-6, 6, xres_w)
-
-    with st.spinner("⚛️  Computing all witnesses…"):
-        states_w = {
-            "Vacuum |0⟩"             : mk_fock(0, dim_w),
-            "Fock |3⟩"               : mk_fock(3, dim_w),
-            f"Coherent |{alpha_w}⟩"  : mk_coherent(alpha_w, 0.0, dim_w),
-            f"Squeezed r={r_w}"      : mk_squeezed(r_w, 0.0, dim_w),
-            f"Thermal n̄={nbar_w}"   : mk_thermal(nbar_w, dim_w),
-            f"Even Cat |{cat_a_w}⟩"  : mk_cat(cat_a_w, 0.0, +1, dim_w),
-            f"Odd Cat |{cat_a_w}⟩"   : mk_cat(cat_a_w, 0.0, -1, dim_w),
-            "Disp-Sq r=0.8"          : mk_ds(2.0, 0.0, 0.8, 0.0, dim_w),
-        }
-        data_rows = []; W_all = {}
-        for lbl, arr in states_w.items():
-            W   = _wigner(arr, xvec_w)
-            mm  = _metrics(arr)
-            neg = _wnv(W, xvec_w)
-            W_all[lbl] = W
-            data_rows.append({
-                "State": lbl, "WNV": round(neg,6),
-                "W_min": round(float(W.min()),6), "W_max": round(float(W.max()),5),
-                "Purity": mm["purity"], "Entropy": mm["entropy"],
-                "Δx": mm["delta_x"], "Δp": mm["delta_p"], "ΔxΔp": mm["heis_prod"],
-                "Mandel Q": round(mm["mandel_Q"],5) if mm["mandel_Q"] is not None else float("nan"),
-                "⟨n̂⟩": mm["mean_n"], "Var(n)": mm["var_n"],
-                "QFI≈4Var(n)": mm["qfi"],
-                "Non-classical": bool(neg > 1e-4),
-                "Sub-Poissonian": bool(mm["mandel_Q"] is not None and mm["mandel_Q"] < -0.01),
-                "Squeezed": bool(mm["heis_prod"] < 0.499),
-            })
-
-    df_w = pd.DataFrame(data_rows).set_index("State")
-    labels_w = list(states_w.keys())
-
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
-        "📊  Witness Table", "📈  Bar Charts",
-        "🌀  Wigner Gallery", "🔢  QFI Analysis", "⚖️  Heisenberg"
-    ])
-
-    with tab1:
-        st.markdown("### Complete Non-Classicality Witness Table")
-        def color_nc(val):
-            if val is True:  return "background-color:#14532d;color:#86efac;font-weight:700"
-            if val is False: return "background-color:#1c1c2e;color:#475569"
-            return ""
-        num_cols  = ["WNV","W_min","Purity","Entropy","Δx","Δp","ΔxΔp","Mandel Q","⟨n̂⟩","Var(n)","QFI≈4Var(n)"]
-        bool_cols = ["Non-classical","Sub-Poissonian","Squeezed"]
-        fmt_mq = lambda v: f"{v:.5f}" if not (isinstance(v,float) and math.isnan(v)) else "—"
-        st.dataframe(
-            df_w.style
-                .background_gradient(cmap="Purples",  subset=["WNV"])
-                .background_gradient(cmap="RdYlGn_r", subset=["Purity"])
-                .map(color_nc, subset=bool_cols)
-                .format({c:":.5f" for c in num_cols if c in df_w.columns and c != "Mandel Q"})
-                .format({"Mandel Q": fmt_mq}),
-            use_container_width=True, height=340,
-        )
-        st.download_button("⬇️ Download CSV", df_w.to_csv().encode(),
-                           "witness_table.csv", "text/csv")
-
-    with tab2:
-        st.markdown("### Non-Classicality Witnesses — Bar Charts")
-        witnesses_plot = [
-            ("WNV",          "Wigner Negativity Volume",      "#a78bfa", "δ=0 → classical"),
-            ("Purity",       "Purity Tr(ρ²)",                 "#34d399", "1=pure"),
-            ("Entropy",      "von Neumann Entropy (bits)",    "#22d3ee", "0=pure state"),
-            ("ΔxΔp",         "Heisenberg Product Δx·Δp",      "#f472b6", "≥ 0.5"),
-            ("Mandel Q",     "Mandel Q (Q<0 = quantum)",      "#fbbf24", "0=Poissonian"),
-            ("QFI≈4Var(n)",  "Quantum Fisher Info",           "#60a5fa", "phase estimation"),
-        ]
-        for row_group in [witnesses_plot[:3], witnesses_plot[3:]]:
-            cols_b = st.columns(3)
-            for col_b, (metric, title, color, note) in zip(cols_b, row_group):
-                vals = df_w[metric].tolist()
-                clean_vals = [v if not (isinstance(v,float) and math.isnan(v)) else 0 for v in vals]
-                fig = go.Figure(go.Bar(
-                    x=labels_w, y=clean_vals,
-                    marker=dict(color=color, line=dict(color="rgba(255,255,255,0.3)", width=0.5)),
-                    text=[f"{v:.3f}" if not (isinstance(v,float) and math.isnan(v)) else "—"
-                          for v in vals],
-                    textposition="outside", textfont=dict(size=9),
-                ))
-                fig.update_layout(**_T, height=295,
-                    title=dict(text=f"<b>{title}</b><br><sup>{note}</sup>",
-                               font=dict(size=11,color=color), x=0.5),
-                    xaxis=dict(tickangle=-32, tickfont=dict(size=8)),
-                )
-                col_b.plotly_chart(fig, use_container_width=True)
-
     with tab3:
-        st.markdown("### Wigner Functions — All Witness States")
-        lbls_g = list(W_all.keys())
-        for row_g in [lbls_g[:4], lbls_g[4:]]:
-            cols_g = st.columns(4)
-            for col_g, lbl in zip(cols_g, row_g):
-                W   = W_all[lbl]; neg = _wnv(W, xvec_w)
-                col_g.plotly_chart(
-                    fig_wigner(W, xvec_w, title=f"{lbl}<br>WNV={neg:.4f}", height=265),
-                    use_container_width=True,
-                )
-
-    with tab4:
-        st.markdown("### Quantum Fisher Information")
-        st.markdown("""<div class="ins-card">
-          <div class="label">💡 QFI</div>
-          <p>QFI ≈ 4·Var(n) quantifies metrological usefulness for phase estimation (Cramér-Rao bound).
-          Higher QFI → better phase resolution below the standard quantum limit.</p>
-        </div>""", unsafe_allow_html=True)
-
-        r_qfi  = np.linspace(0.01, 2.5, 60)
-        fig_qfi = go.Figure()
-        for y, name, col in [
-            (4*r_qfi**2,          "Coherent  4|α|²",           "#22d3ee"),
-            (4*np.sinh(r_qfi)**2, "Squeezed  4sinh²(r)",       "#a78bfa"),
-        ]:
-            fig_qfi.add_trace(go.Scatter(x=r_qfi, y=y, name=name,
-                line=dict(color=col, width=2.5)))
-        fig_qfi.update_layout(**_T, height=320,
-            title=dict(text="<b>QFI vs Parameter</b>",
-                       font=dict(size=13,color="#a78bfa"), x=0.5),
-            xaxis_title="Parameter (|α| or r)", yaxis_title="QFI")
-        st.plotly_chart(fig_qfi, use_container_width=True)
-
-        qfi_vals = df_w["QFI≈4Var(n)"].tolist()
-        fig_rad  = go.Figure(go.Scatterpolar(
-            r=qfi_vals, theta=labels_w, fill="toself",
-            line_color="#a78bfa", fillcolor="rgba(167,139,250,0.15)",
-        ))
-        fig_rad.update_layout(**_T, height=420,
-            polar=dict(bgcolor="#0d0e24",
-                       radialaxis=dict(gridcolor="#2d1b69"),
-                       angularaxis=dict(gridcolor="#2d1b69")),
-            title=dict(text="<b>QFI Radar — All States</b>",
-                       font=dict(size=13,color="#a78bfa"), x=0.5))
-        st.plotly_chart(fig_rad, use_container_width=True)
-
-    with tab5:
-        st.markdown("### Heisenberg Uncertainty Product Δx·Δp")
-        heis_vals = df_w["ΔxΔp"].tolist()
-        colors_h  = ["#f472b6" if row["Non-classical"] else
-                     ("#22d3ee" if row["Squeezed"] else "#fbbf24")
-                     for _, row in df_w.iterrows()]
-        fig_h = go.Figure(go.Bar(
-            x=labels_w, y=heis_vals,
-            marker=dict(color=colors_h, line=dict(color="rgba(255,255,255,0.3)",width=0.5)),
-            text=[f"{v:.5f}" for v in heis_vals],
-            textposition="outside", textfont=dict(size=9),
-        ))
-        fig_h.add_hline(y=0.5, line_color="#34d399", line_dash="dash", line_width=2,
-                        annotation_text="Heisenberg limit  Δx·Δp = ½",
-                        annotation_font=dict(color="#34d399", size=10),
-                        annotation_position="top right")
-        fig_h.update_layout(**_T, height=420,
-            title=dict(text="<b>Heisenberg Uncertainty Product  Δx · Δp</b>",
-                       font=dict(size=13,color="#a78bfa"), x=0.5),
-            xaxis=dict(tickangle=-32, tickfont=dict(size=9)),
-            yaxis_title="Δx · Δp",
-        )
-        st.plotly_chart(fig_h, use_container_width=True)
-        st.markdown("""<div class="eq-box">
-        Heisenberg Uncertainty Principle:   Δx · Δp  ≥  ½<br>
-        Minimum uncertainty (Δx·Δp = ½):  Coherent states,  Squeezed states (along squeezed axis)<br>
-        Thermal / mixed states:  Δx·Δp  >  ½  (excess classical noise above vacuum level)
-        </div>""", unsafe_allow_html=True)
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# PAGE 4 — CHANNEL SIMULATOR
-# ══════════════════════════════════════════════════════════════════════════════
-def page_channel_simulator():
-    st.markdown("""
-    <div class="banner">
-      <h1>⚡ Channel Simulator</h1>
-      <p>Apply any quantum channel to any input state · Watch the Wigner function evolve live</p>
-      <p>Displacement D(α) · Squeezing S(r) · Phase Shift R(φ) · Photon Loss (Lindblad)</p>
-      <span class="tag">Before / After Wigner</span>
-      <span class="tag">ΔW difference map</span>
-      <span class="tag">Loss evolution sweep</span>
-    </div>""", unsafe_allow_html=True)
-
-    with st.sidebar:
-        st.markdown("### ⚡ Channel Controls")
-        dim_c  = st.slider("Hilbert dim", 20, 50, 30, 5)
-        xres_c = st.slider("Grid resolution", 60, 140, 90, 10)
-
-        st.markdown("**Input State**")
-        in_type = st.selectbox("Input", [
-            "Coherent |α⟩", "Fock |n⟩", "Squeezed", "Cat State", "Thermal"
-        ])
-        if in_type == "Coherent |α⟩":
-            a_in   = st.slider("Re(α)", -3.0, 3.0, 2.0, 0.1)
-            rho_in = mk_coherent(a_in, 0.0, dim_c)
-        elif in_type == "Fock |n⟩":
-            n_in   = st.slider("n", 0, 8, 3)
-            rho_in = mk_fock(n_in, dim_c)
-        elif in_type == "Squeezed":
-            r_in   = st.slider("r", 0.0, 2.0, 0.8, 0.05)
-            rho_in = mk_squeezed(r_in, 0.0, dim_c)
-        elif in_type == "Cat State":
-            a_cat  = st.slider("|α|", 0.5, 3.0, 2.0, 0.1)
-            rho_in = mk_cat(a_cat, 0.0, +1, dim_c)
-        else:
-            nb_in  = st.slider("n̄", 0.1, 3.0, 1.0, 0.1)
-            rho_in = mk_thermal(nb_in, dim_c)
-
-        st.markdown("**Channel**")
-        channel = st.selectbox("Channel", [
-            "Displacement D(α)", "Squeezing S(r)", "Phase Shift R(φ)",
-            "Photon Loss", "Sequential D→S→R",
-        ])
-        ch_alpha = ch_ai = ch_r = ch_phi = ch_gt = 0.0
-        if channel == "Displacement D(α)":
-            ch_alpha = st.slider("Re(α)", -3.0, 3.0, 1.0, 0.1)
-            ch_ai    = st.slider("Im(α)", -3.0, 3.0, 0.0, 0.1)
-        elif channel == "Squeezing S(r)":
-            ch_r   = st.slider("r", 0.0, 2.0, 0.5, 0.05)
-            ch_phi = st.slider("φ (π)", 0.0, 2.0, 0.0, 0.1)
-        elif channel == "Phase Shift R(φ)":
-            ch_phi = st.slider("φ (π)", 0.0, 2.0, 0.5, 0.05)
-        elif channel == "Photon Loss":
-            ch_gt  = st.slider("γt (loss)", 0.0, 3.0, 0.5, 0.05)
-        else:
-            ch_alpha = st.slider("D: Re(α)", -2.0, 2.0, 1.0, 0.1)
-            ch_r     = st.slider("S: r",     0.0,  1.5, 0.5, 0.05)
-            ch_phi   = st.slider("R: φ (π)", 0.0,  2.0, 0.3, 0.05)
-
-    xvec_c = np.linspace(-6, 6, xres_c)
-
-    with st.spinner("⚛️  Applying channel…"):
-        if channel == "Displacement D(α)":
-            rho_out  = ch_disp(rho_in, ch_alpha, ch_ai)
-            ch_label = f"D(α={ch_alpha:+.2f}{ch_ai:+.2f}i)"
-            theory_eq  = "D̂(α) = exp(αâ† − α*â)  →  rigid shift in phase space"
-            theory_txt = "Displacement moves the state rigidly — no distortion. Purity is preserved perfectly. Used in CV teleportation as the correction operation."
-        elif channel == "Squeezing S(r)":
-            rho_out  = ch_sq(rho_in, ch_r, ch_phi*math.pi)
-            ch_label = f"S(r={ch_r:.2f}, φ={ch_phi:.1f}π)"
-            theory_eq  = "Ŝ(r) = exp(r(â² − â†²)/2)  →  elliptical squeezing"
-            theory_txt = "Squeezing compresses one quadrature and amplifies the other. Purity and phase-space area are perfectly conserved. Resource for LIGO and CV-QKD."
-        elif channel == "Phase Shift R(φ)":
-            rho_out  = ch_phase(rho_in, ch_phi*math.pi)
-            ch_label = f"R(φ={ch_phi:.2f}π)"
-            theory_eq  = "R̂(φ) = exp(iφ â†â)  →  rotation in phase space"
-            theory_txt = "Phase rotation spins the Wigner function rigidly about the origin. Purity is perfectly conserved — a unitary operation. Full 2π returns the state exactly."
-        elif channel == "Photon Loss":
-            rho_out  = ch_loss(rho_in, ch_gt)
-            ch_label = f"Loss(γt={ch_gt:.2f})"
-            theory_eq  = "dρ/dt = γ(âρâ† − ½â†âρ − ½ρâ†â)  →  Gaussian spreading"
-            theory_txt = "Loss channel models photon absorption by the environment. Every absorbed photon increases entropy and decreases purity. The Wigner function broadens and negativity is washed out."
-        else:
-            tmp1     = ch_disp(rho_in, ch_alpha, 0.0)
-            tmp2     = ch_sq(tmp1, ch_r, 0.0)
-            rho_out  = ch_phase(tmp2, ch_phi*math.pi)
-            ch_label = f"D({ch_alpha:.1f})→S({ch_r:.2f})→R({ch_phi:.1f}π)"
-            theory_eq  = "D̂(α) → Ŝ(r) → R̂(φ)  sequential channel"
-            theory_txt = "Sequential application of displacement, squeezing, and phase rotation. Each unitary operation preserves purity. Their composition is still unitary."
-
-        W_in    = _wigner(rho_in,  xvec_c)
-        W_out   = _wigner(rho_out, xvec_c)
-        m_in    = _metrics(rho_in)
-        m_out   = _metrics(rho_out)
-        neg_in  = _wnv(W_in,  xvec_c)
-        neg_out = _wnv(W_out, xvec_c)
-
-    st.markdown(f"### {in_type}  →  **{ch_label}**  →  Output")
-    st.markdown(f'<div class="eq-box"><b>Theory:</b>  {theory_eq}</div>', unsafe_allow_html=True)
-
-    # Metric delta strip
-    mc = st.columns(6)
-    mc[0].metric("Purity IN",  f"{m_in['purity']:.5f}")
-    mc[1].metric("Purity OUT", f"{m_out['purity']:.5f}",
-                 delta=f"{m_out['purity']-m_in['purity']:+.5f}")
-    mc[2].metric("Entropy OUT",f"{m_out['entropy']:.4f}",
-                 delta=f"{m_out['entropy']-m_in['entropy']:+.4f}")
-    mc[3].metric("WNV IN",     f"{neg_in:.5f}")
-    mc[4].metric("WNV OUT",    f"{neg_out:.5f}",
-                 delta=f"{neg_out-neg_in:+.5f}")
-    mc[5].metric("ΔxΔp OUT",   f"{m_out['heis_prod']:.5f}",
-                 delta=f"{m_out['heis_prod']-m_in['heis_prod']:+.5f}")
-
-    # Before / After Wigner
-    c1, c2 = st.columns(2)
-    c1.plotly_chart(fig_wigner(W_in,  xvec_c, title=f"Input:  {in_type}"),
-                    use_container_width=True)
-    c2.plotly_chart(fig_wigner(W_out, xvec_c, title=f"Output:  {ch_label}"),
-                    use_container_width=True)
-
-    # ΔW difference map
-    W_diff = W_out - W_in
-    diff_cs = [[0,"#ef4444"],[0.5,"#07091a"],[1,"#22d3ee"]]
-    st.plotly_chart(
-        fig_wigner(W_diff, xvec_c,
-                   title="ΔW = W_out − W_in  (channel effect on phase space)",
-                   cs=diff_cs),
-        use_container_width=True,
-    )
-
-    # Photon distribution comparison
-    st.markdown("### 📊 Photon Distribution — Before vs After")
-    k    = np.arange(len(m_in["probs"]))
-    fig_p = go.Figure()
-    fig_p.add_trace(go.Bar(x=k, y=m_in["probs"],  name="Input",
-        marker=dict(color="#60a5fa", line=dict(color="rgba(0,0,0,0)")),
-        opacity=0.8, width=0.4, offset=-0.2))
-    fig_p.add_trace(go.Bar(x=k, y=m_out["probs"], name="Output",
-        marker=dict(color="#f472b6", line=dict(color="rgba(0,0,0,0)")),
-        opacity=0.8, width=0.4, offset=0.2))
-    fig_p.update_layout(**_T, barmode="overlay", height=300,
-        title=dict(text="<b>P(n): Input vs Output</b>",
-                   font=dict(size=13,color="#a78bfa"), x=0.5),
-        xaxis_title="Photon number n", yaxis_title="P(n)")
-    st.plotly_chart(fig_p, use_container_width=True)
-
-    # Loss evolution sweep
-    if channel == "Photon Loss":
-        st.markdown("### 🔻 Loss Channel Evolution Sweep")
-        gt_vals = np.linspace(0, 3.0, 8)
-        pur_tr, neg_tr, ent_tr = [], [], []
-        with st.spinner("⚛️  Computing loss trajectory…"):
-            for gt_ in gt_vals:
-                r_  = ch_loss(rho_in, float(gt_))
-                m_  = _metrics(r_)
-                W_  = _wigner(r_, xvec_c)
-                pur_tr.append(m_["purity"])
-                neg_tr.append(_wnv(W_, xvec_c))
-                ent_tr.append(m_["entropy"])
-        fig_ev = make_subplots(1, 3, subplot_titles=["Purity","WNV","Entropy"])
-        for ci, (vals, col, name) in enumerate([
-            (pur_tr,"#34d399","Purity"),
-            (neg_tr,"#a78bfa","WNV"),
-            (ent_tr,"#22d3ee","Entropy"),
-        ], 1):
-            fig_ev.add_trace(go.Scatter(x=gt_vals, y=vals, mode="lines+markers",
-                line=dict(color=col,width=2.5), marker=dict(size=7), name=name),
-                row=1, col=ci)
-        fig_ev.update_layout(**_T, height=300, showlegend=False,
-            title=dict(text="<b>Decoherence under Photon Loss</b>",
-                       font=dict(size=13,color="#a78bfa"), x=0.5))
-        st.plotly_chart(fig_ev, use_container_width=True)
-
-    st.markdown(f"""<div class="ins-card">
-      <div class="label">💡 Physical Intuition</div>
-      <p>{theory_txt}</p>
-    </div>""", unsafe_allow_html=True)
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# PAGE 5 — GBS SAMPLER
-# ══════════════════════════════════════════════════════════════════════════════
-def page_gbs_sampler():
-    st.markdown("""
-    <div class="banner">
-      <h1>🔭 GBS Sampler</h1>
-      <p>Gaussian Boson Sampling · Hafnian probabilities · Photon statistics · CV-QML</p>
-      <p>Strawberry Fields backend · Thewalrus hafnian · PennyLane parameter-shift rule</p>
-      <span class="tag">Strawberry Fields</span>
-      <span class="tag">Hafnian (#P-hard)</span>
-      <span class="tag">CV-QML</span>
-    </div>""", unsafe_allow_html=True)
-
-    sf_ok = False
-    try:
-        import strawberryfields as sf
-        from strawberryfields import ops as sf_ops
-        sf_ok = True
-    except ImportError:
-        pass
-
-    tw_ok = False
-    try:
-        from thewalrus import hafnian
-        tw_ok = True
-    except ImportError:
-        pass
-
-    if not sf_ok:
-        st.info("ℹ️  Strawberry Fields runs on the HPC — this page shows analytic GBS simulation.")
-
-    with st.sidebar:
-        st.markdown("### 🔭 GBS Controls")
-        N_modes = st.slider("N modes", 2, 6, 4, 1)
-        r_gbs   = st.slider("Squeezing r", 0.1, 2.0, 0.8, 0.05)
-        asym_r  = st.checkbox("Asymmetric squeezing", False)
-        xres_g  = st.slider("Grid resolution", 60, 120, 80, 10)
-        dim_g   = 30
-
-    xvec_g = np.linspace(-5, 5, xres_g)
-
-    tab1, tab2, tab3, tab4 = st.tabs([
-        "📡  GBS Circuit", "📊  Photon Statistics", "🔢  Hafnian", "🤖  CV-QML"
-    ])
-
-    r_vals = ([r_gbs]*N_modes if not asym_r else
-              [r_gbs*(0.5 + 0.5*i/(N_modes-1)) for i in range(N_modes)])
-
-    with tab1:
-        st.markdown("### GBS Circuit Architecture")
-        st.markdown("""<div class="eq-box">
-        Squeezed vacuum inputs  →  Haar-random interferometer  →  PNR detection<br>
-        P(n₁,…,nₘ) = |Haf(A_S)|² / (n₁!···nₘ! · √det(σ_Q))
-        </div>""", unsafe_allow_html=True)
-
-        if sf_ok:
-            @st.cache_data(ttl=600, show_spinner=False)
-            def _run_sf(N, rv):
-                import strawberryfields as sf2
-                from strawberryfields import ops as sf_ops2
-                from strawberryfields.utils import random_interferometer
-                U    = random_interferometer(N)
-                prog = sf2.Program(N)
-                with prog.context as q:
-                    for i, r in enumerate(rv): sf_ops2.Squeezed(r,0)|q[i]
-                    sf_ops2.Interferometer(U)|tuple(q[i] for i in range(N))
-                eng    = sf2.Engine("gaussian")
-                result = eng.run(prog)
-                state  = result.state
-                mn_per = [state.mean_photon(i)[0] for i in range(N)]
-                xv_sf  = np.linspace(-5,5,80)
-                wigs   = {}
-                for i in range(N):
-                    wr = state.wigner(i, xv_sf, xv_sf)
-                    wigs[i] = wr[0] if isinstance(wr,tuple) else wr
-                return dict(mean_photons=mn_per, wigners=wigs, xvec=xv_sf)
-            with st.spinner("🍓 Running Strawberry Fields Gaussian backend…"):
-                res_sf = _run_sf(N_modes, tuple(r_vals))
-            st.success(f"✅ Strawberry Fields: {N_modes}-mode GBS executed")
-            mc = st.columns(N_modes)
-            for i, mn in enumerate(res_sf["mean_photons"]):
-                mc[i].metric(f"⟨n̂_{i}⟩", f"{mn:.4f}")
-            st.markdown("#### Output Mode Wigner Functions")
-            cols_sf = st.columns(min(N_modes, 4))
-            for i in range(min(N_modes, 4)):
-                W_sf = np.array(res_sf["wigners"][i], dtype=float)
-                cols_sf[i].plotly_chart(
-                    fig_wigner(W_sf, res_sf["xvec"],
-                               title=f"Mode {i}  ⟨n̂⟩={res_sf['mean_photons'][i]:.4f}",
-                               height=280),
-                    use_container_width=True)
-        else:
-            mn_vals = [math.sinh(r)**2 for r in r_vals]
-            mc = st.columns(N_modes)
-            for i, mn in enumerate(mn_vals):
-                mc[i].metric(f"⟨n̂_{i}⟩ analytic", f"{mn:.4f}")
-
-            # Analytic Wigner for each squeezed mode
-            st.markdown("#### Marginal Wigner Functions (squeezed vacuum)")
-            cols_an = st.columns(min(N_modes,4))
-            for i in range(min(N_modes,4)):
-                r_i = r_vals[i]
-                sx  = np.exp(-r_i); sp = np.exp(r_i)
-                X, P = np.meshgrid(xvec_g, xvec_g)
-                W_an = (2/np.pi)*np.exp(-2*(X**2*sx**2 + P**2*sp**2))/(sx*sp)
-                cols_an[i].plotly_chart(
-                    fig_wigner(W_an, xvec_g,
-                               title=f"Mode {i}  r={r_i:.2f}", height=260),
-                    use_container_width=True)
-
-        # Circuit text diagram
-        st.markdown("#### Circuit Diagram")
-        lines = [f"Mode {i}: |0⟩ ──── Ŝ(r={r:.2f}) ──── [  Û  ] ──── PNR" for i,r in enumerate(r_vals)]
-        st.code(f"""GBS Circuit ({N_modes} modes):
-{'─'*58}
-{chr(10).join(lines)}
-{'─'*58}
-Û = Haar-random {N_modes}×{N_modes} unitary (Clements decomposition)
-PNR = photon-number-resolving detector
-Output: click pattern (n₀, n₁, …, n_{N_modes-1})
-""", language="")
-
-        st.markdown("""<div class="ins-card">
-          <div class="label">💡 GBS Quantum Advantage</div>
-          <p>GBS output probability P(S) ∝ |Haf(A_S)|² — the hafnian is a #P-hard function.
-          Sampling from this distribution is classically intractable for large N.
-          Applications: molecular vibronic spectra, dense subgraph optimisation, drug discovery.
-          Xanadu's Borealis (2022) demonstrated quantum computational advantage using GBS.</p>
-        </div>""", unsafe_allow_html=True)
-
-    with tab2:
-        st.markdown("### Photon Number Statistics")
-        r_arr    = np.array(r_vals)
-        mean_n   = np.sinh(r_arr)**2
-        var_n    = np.sinh(r_arr)**2 * np.cosh(r_arr)**2 * 2
-        mq_gbs   = (var_n - mean_n) / np.maximum(mean_n, 1e-10)
-
-        c1, c2 = st.columns(2)
-        with c1:
-            colors_mn = ["#a78bfa","#22d3ee","#f472b6","#34d399","#fbbf24","#60a5fa"][:N_modes]
-            fig_mn = go.Figure(go.Bar(
-                x=[f"Mode {i}" for i in range(N_modes)],
-                y=mean_n.tolist(),
-                marker=dict(color=colors_mn, line=dict(color="rgba(0,0,0,0)")),
-                text=[f"{v:.4f}" for v in mean_n], textposition="outside",
-            ))
-            fig_mn.update_layout(**_T, height=310,
-                title=dict(text="<b>⟨n̂⟩ per Mode  (sinh²r)</b>",
-                           font=dict(size=13,color="#a78bfa"),x=0.5),
-                yaxis_title="⟨n̂⟩")
-            st.plotly_chart(fig_mn, use_container_width=True)
-        with c2:
-            fig_mq = go.Figure(go.Bar(
-                x=[f"Mode {i}" for i in range(N_modes)],
-                y=mq_gbs.tolist(),
-                marker=dict(color="#fbbf24", line=dict(color="rgba(0,0,0,0)")),
-                text=[f"{v:.3f}" for v in mq_gbs], textposition="outside",
-            ))
-            fig_mq.add_hline(y=0, line_color="#475569", line_dash="dash",
-                             annotation_text="Poissonian Q=0")
-            fig_mq.update_layout(**_T, height=310,
-                title=dict(text="<b>Mandel Q  (super-Poissonian)</b>",
-                           font=dict(size=13,color="#fbbf24"),x=0.5),
-                yaxis_title="Q_M")
-            st.plotly_chart(fig_mq, use_container_width=True)
-
-        # ⟨n⟩ vs r sweep
-        r_sw  = np.linspace(0, 2.5, 100)
-        n_sw  = np.sinh(r_sw)**2
-        fig_sw = go.Figure()
-        fig_sw.add_trace(go.Scatter(x=r_sw, y=n_sw, mode="lines",
-            line=dict(color="#a78bfa",width=2.5), fill="tozeroy",
-            fillcolor="rgba(167,139,250,0.08)", name="⟨n̂⟩=sinh²r"))
-        fig_sw.add_vline(x=r_gbs, line_color="#fbbf24", line_dash="dash",
-                         annotation_text=f"r={r_gbs:.2f}",
-                         annotation_font_color="#fbbf24")
-        fig_sw.update_layout(**_T, height=300,
-            title=dict(text="<b>Mean Photon Number vs Squeezing</b>",
-                       font=dict(size=13,color="#a78bfa"),x=0.5),
-            xaxis_title="r", yaxis_title="⟨n̂⟩")
-        st.plotly_chart(fig_sw, use_container_width=True)
-
-    with tab3:
-        st.markdown("### Hafnian Computation")
-        st.markdown("""<div class="eq-box">
+        st.markdown("### Hafnian — the #P-hard function at the heart of GBS")
+        st.markdown("""
+        <div class="eq-card">
         Haf(A) = Σ_{perfect matchings M} Π_{(i,j)∈M} A_{ij}<br>
-        GBS:  P(S) = |Haf(A_S)|² / (S! · √det(σ_Q))  ·  Computing Haf is #P-hard
+        GBS probability:  P(S) = |Haf(A_S)|² / (s₁!·s₂!·… · √det(σ_Q))<br>
+        Computing Haf(A) for large n is #P-hard — requires exponential classical time.
         </div>""", unsafe_allow_html=True)
 
-        def _haf_brute(A):
-            n2 = A.shape[0]
-            if n2 % 2 != 0: return 0.0
-            idx = list(range(n2)); haf = 0.0+0j
-            def _m(lst):
-                if not lst: yield []; return
-                f=lst[0]; rest=lst[1:]
-                for i,v in enumerate(rest):
-                    for m in _m(rest[:i]+rest[i+1:]):
-                        yield [(f,v)]+m
-            for m in _m(idx):
-                term=1.0+0j
-                for (i,j) in m: term*=A[i,j]
-                haf+=term
-            return float(np.real(haf))
+        c_haf1, c_haf2 = st.columns(2)
+        with c_haf1:
+            st.markdown("**Verification table:**")
+            df_haf = pd.DataFrame(GD.get('hafnian_table', []))
+            if not df_haf.empty:
+                st.dataframe(df_haf, use_container_width=True, hide_index=True)
 
-        col_h1, col_h2 = st.columns(2)
-        with col_h1:
-            st.markdown("**Verification on known matrices:**")
-            test_mats = {
-                "2×2 Identity": np.eye(2),
-                "2×2 Ones":     np.ones((2,2)),
-                "4×4 Random":   np.random.RandomState(42).randn(4,4),
-            }
-            rows_h = []
-            for name_, A_ in test_mats.items():
-                A_sym = (A_+A_.T)/2
-                hb    = _haf_brute(A_sym)
-                ht    = "N/A"
-                if tw_ok:
-                    from thewalrus import hafnian as tw_haf
-                    ht = f"{float(np.real(tw_haf(A_sym))):.6f}"
-                rows_h.append({"Matrix":name_,"Brute-force Haf":f"{hb:.6f}","Thewalrus Haf":ht})
-            st.dataframe(pd.DataFrame(rows_h), use_container_width=True, hide_index=True)
-        with col_h2:
-            st.markdown("**Classical complexity scaling:**")
-            n_v  = np.arange(2,22,2)
-            t_r  = 2**n_v * n_v**2
-            fig_cx = go.Figure(go.Scatter(x=n_v, y=t_r, mode="lines+markers",
-                line=dict(color="#a78bfa",width=2.5),
-                marker=dict(size=6,color="#f472b6"),
-                fill="tozeroy", fillcolor="rgba(167,139,250,0.08)",
-                name="Ryser O(2ⁿn²)"))
-            fig_cx.update_layout(**_T, height=300, yaxis_type="log",
-                title=dict(text="<b>Hafnian Complexity  O(2ⁿ·n²)</b>",
-                           font=dict(size=13,color="#a78bfa"),x=0.5),
-                xaxis_title="Matrix size n", yaxis_title="Operations")
-            st.plotly_chart(fig_cx, use_container_width=True)
+        with c_haf2:
+            # Scaling plot
+            if mode_options:
+                gbs0 = GD[mode_options[0]]
+                n_arr  = np.array(gbs0['hafnian_n'])
+                t_ryser = np.array(gbs0['hafnian_ops'])
+                fig_haf = go.Figure(go.Scatter(x=n_arr, y=t_ryser, mode="lines+markers",
+                    line=dict(color="#6366f1", width=2.5), marker=dict(size=6, color="#f472b6"), name="Ryser O(2ⁿn²)"))
+                fig_haf.update_layout(**_LAY, height=300, yaxis_type="log",
+                    title=dict(text="<b>Hafnian complexity scaling</b>", font=dict(size=12,color="#6366f1"), x=0.5),
+                    xaxis_title="n (matrix size)", yaxis_title="Operations (log scale)")
+                st.plotly_chart(fig_haf, use_container_width=True)
 
     with tab4:
-        st.markdown("### PennyLane CV-QML")
-        st.markdown("""<div class="eq-box">
-        CV Quantum Kernel:  K(x,x') = |⟨0|Û†(x)Û(x')|0⟩|²<br>
-        Parameter-shift rule:  ∂⟨Ô⟩/∂θ = ½[⟨Ô⟩_{θ+π/2} − ⟨Ô⟩_{θ−π/2}]
+        st.markdown("### Continuous-Variable Quantum Machine Learning")
+        st.markdown("""
+        <div class="eq-card">
+        CV QNode:  U(θ) = D(α)·S(r)·R(φ)  acting on |0⟩<br>
+        Expectation:  ⟨X⟩(θ) = √2·r·cos(θ)  (displacement after squeezing)<br>
+        Parameter-shift rule:  ∂⟨O⟩/∂θ = ½[⟨O⟩_{θ+π/2} − ⟨O⟩_{θ-π/2}]
         </div>""", unsafe_allow_html=True)
 
-        theta_v  = np.linspace(-math.pi, math.pi, 200)
-        expect_x = 1.5*np.sqrt(2)*np.cos(theta_v)
-        grad_x   = -1.5*np.sqrt(2)*np.sin(theta_v)
-        fig_qml  = make_subplots(1, 2, subplot_titles=["⟨X̂⟩ vs θ", "∂⟨X̂⟩/∂θ (gradient)"])
-        fig_qml.add_trace(go.Scatter(x=theta_v, y=expect_x, mode="lines",
-            line=dict(color="#a78bfa",width=2.5), fill="tozeroy",
-            fillcolor="rgba(167,139,250,0.07)", name="⟨X̂⟩"), row=1, col=1)
-        fig_qml.add_trace(go.Scatter(x=theta_v, y=grad_x, mode="lines",
-            line=dict(color="#22d3ee",width=2.5), name="gradient"), row=1, col=2)
-        fig_qml.update_layout(**_T, height=320,
-            title=dict(text="<b>CV QNode: Parameter-Shift Landscape</b>",
-                       font=dict(size=13,color="#a78bfa"),x=0.5))
+        theta = np.array(GD['qml_theta'])
+        exp_x = np.array(GD['qml_exp_x'])
+        grad  = np.array(GD['qml_gradient'])
+
+        fig_qml = make_subplots(1, 2, subplot_titles=["⟨X̂⟩ vs θ", "∂⟨X̂⟩/∂θ (gradient)"])
+        fig_qml.add_trace(go.Scatter(x=theta, y=exp_x, mode="lines",
+            line=dict(color="#6366f1", width=2.5), name="⟨X⟩"), row=1, col=1)
+        fig_qml.add_trace(go.Scatter(x=theta, y=grad, mode="lines",
+            line=dict(color="#22d3ee", width=2.5), name="gradient"), row=1, col=2)
+        fig_qml.update_layout(**_LAY, height=320,
+            title=dict(text="<b>CV QNode — Parameter landscape</b>", font=dict(size=13,color="#6366f1"), x=0.5))
         st.plotly_chart(fig_qml, use_container_width=True)
 
-        steps = np.arange(120)
-        loss  = np.maximum(
-            2.5*np.exp(-steps/30) + 0.05*np.random.RandomState(42).randn(120)*np.exp(-steps/60),
-            0.001)
-        ma    = np.convolve(loss, np.ones(8)/8, mode="same")
-        fig_tr = go.Figure()
-        fig_tr.add_trace(go.Scatter(x=steps, y=loss, mode="lines",
-            line=dict(color="#f472b6",width=2), fill="tozeroy",
-            fillcolor="rgba(244,114,182,0.08)", name="Loss"))
-        fig_tr.add_trace(go.Scatter(x=steps, y=ma, mode="lines",
-            line=dict(color="#fbbf24",width=1.5,dash="dot"), name="8-step avg"))
-        fig_tr.update_layout(**_T, height=290, yaxis_type="log",
-            title=dict(text="<b>CV-QNN Training Loss (Adam Optimizer)</b>",
-                       font=dict(size=13,color="#f472b6"),x=0.5),
-            xaxis_title="Training step", yaxis_title="MSE Loss")
+        steps = np.array(GD['qml_steps']); loss = np.array(GD['qml_loss'])
+        fig_tr = go.Figure(go.Scatter(x=steps, y=loss, mode="lines",
+            line=dict(color="#f472b6", width=2.5),
+            fill="tozeroy", fillcolor="rgba(244,114,182,0.08)"))
+        fig_tr.update_layout(**_LAY, height=280, yaxis_type="log",
+            title=dict(text="<b>CV-QNN Training Loss (Adam optimizer)</b>", font=dict(size=12,color="#f472b6"), x=0.5),
+            xaxis_title="Training step", yaxis_title="MSE Loss (log scale)")
         st.plotly_chart(fig_tr, use_container_width=True)
 
-        st.markdown("""<div class="ins-card">
-          <div class="label">💡 CV Quantum Machine Learning</div>
-          <p>CV-QNNs use Gaussian gates (D̂, Ŝ, R̂) and non-Gaussian gates (Kerr) as trainable layers.
-          The parameter-shift rule gives exact quantum gradients on hardware — no finite-differences needed.
-          CV-QML is naturally suited for regression, generative modelling, and quantum chemistry tasks.
-          See <b>08_GBS_SF.ipynb</b> sections 13–16 for full PennyLane implementation.</p>
+        st.markdown("""
+        <div class="insight-card">
+            <div class="title">💡 CV-QML — Why it matters</div>
+            <p>Continuous-variable quantum neural networks use <b>Gaussian gates</b> (displacement, squeezing, rotation)
+            and <b>non-Gaussian gates</b> (Kerr) as trainable layers.
+            The parameter-shift rule enables exact quantum gradients on real hardware.
+            Xanadu's Borealis processor demonstrated quantum advantage using GBS in 2022.</p>
         </div>""", unsafe_allow_html=True)
 
-
-# ══════════════════════════════════════════════════════════════════════════════
-# MAIN
-# ══════════════════════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════════════════════════
+# MAIN ROUTER
+# ════════════════════════════════════════════════════════════════════════════════
 def main():
     page = render_sidebar()
     if   "State Explorer"    in page: page_state_explorer()
     elif "Phase Space Zoo"   in page: page_phase_space_zoo()
     elif "Witness Lab"       in page: page_witness_lab()
     elif "Channel Simulator" in page: page_channel_simulator()
-    elif "GBS Sampler"       in page: page_gbs_sampler()
+    elif "GBS"               in page: page_gbs_sampler()
 
 if __name__ == "__main__":
     main()
