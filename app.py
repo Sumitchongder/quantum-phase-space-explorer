@@ -535,16 +535,24 @@ def page_phase_space_zoo():
         
                 m = sd["metrics"]
                 wnv = sd.get("wnv", 0.0)
+                mandel_q = m.get("mandel_Q", None)
         
-                # Compute non-classicality before appending
-                is_nonclassical = (wnv > 0.001) or (m.get("mandel_Q", 0) != 0)
+                # Decision logic for non-classicality
+                if wnv > 0.001:
+                    is_nonclassical = True
+                elif mandel_q is not None and mandel_q < 0:
+                    is_nonclassical = True
+                elif "Thermal" in label or "Fock |0⟩" in label:
+                    is_nonclassical = False
+                else:
+                    is_nonclassical = False
         
                 rows.append({
                     "State": label,
                     "⟨n⟩": m["mean_n"],
                     "Purity": m["purity"],
                     "Entropy S(ρ)": m["entropy"],
-                    "Mandel Q": m.get("mandel_Q", "—"),
+                    "Mandel Q": mandel_q if mandel_q is not None else "—",
                     "WNV": round(wnv, 5),
                     "Non-classical": "✅" if is_nonclassical else "❌"
                 })
@@ -552,10 +560,12 @@ def page_phase_space_zoo():
             df = pd.DataFrame(rows)
             st.dataframe(df, use_container_width=True, hide_index=True, height=320)
             st.markdown("""<div class="insight"><div class="t">💡 Reading the table</div>
-            <p><b>WNV > 0</b> rigorously proves non-classicality.
-            <b>Mandel Q &lt; 0</b> = sub-Poissonian photon statistics.
-            <b>Purity = 1</b> = pure state. <b>Entropy = 0</b> = no classical uncertainty.</p>
+            <p><b>WNV > 0</b> rigorously proves non-classicality.<br>
+            <b>Mandel Q &lt; 0</b> = sub-Poissonian photon statistics (non-classical).<br>
+            <b>Purity = 1</b> = pure state. <b>Entropy = 0</b> = no classical uncertainty.<br>
+            Thermal and vacuum states are classical mixtures even if Mandel Q ≥ 0.</p>
             </div>""", unsafe_allow_html=True)
+
 
 
 # ════════════════════════════════════════════════════════════════════════════════
