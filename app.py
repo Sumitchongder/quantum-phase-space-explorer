@@ -542,7 +542,11 @@ def page_phase_space_zoo():
                     is_nonclassical = True
                 elif mandel_q is not None and mandel_q < 0:
                     is_nonclassical = True
-                elif "Thermal" in label or "Fock |0⟩" in label:
+                elif "Disp-Sq" in label or "Squeezed" in label or "Cat" in label or "GKP" in label:
+                    # Explicitly mark these families as non-classical
+                    is_nonclassical = True
+                elif "Thermal" in label or "Fock |0⟩" in label or "Coherent" in label:
+                    # Classical states
                     is_nonclassical = False
                 else:
                     is_nonclassical = False
@@ -557,13 +561,15 @@ def page_phase_space_zoo():
                     "Non-classical": "✅" if is_nonclassical else "❌"
                 })
         
+            # Render the table only once
             df = pd.DataFrame(rows)
             st.dataframe(df, use_container_width=True, hide_index=True, height=320)
             st.markdown("""<div class="insight"><div class="t">💡 Reading the table</div>
             <p><b>WNV > 0</b> rigorously proves non-classicality.<br>
             <b>Mandel Q &lt; 0</b> = sub-Poissonian photon statistics (non-classical).<br>
             <b>Purity = 1</b> = pure state. <b>Entropy = 0</b> = no classical uncertainty.<br>
-            Thermal and vacuum states are classical mixtures even if Mandel Q ≥ 0.</p>
+            Thermal, coherent, and vacuum states are classical mixtures even if Mandel Q ≥ 0.<br>
+            Displaced squeezed, squeezed, cat, and GKP states are always non-classical.</p>
             </div>""", unsafe_allow_html=True)
 
 
