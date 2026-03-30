@@ -349,6 +349,11 @@ def page_state_explorer():
             n_sel = st.select_slider("Photon number n", options=[0,1,2,3,5], key="se_fock")
             grp, key = "fock", n_sel
 
+        # Special case: vacuum Fock state is classical
+        if state_type == "Fock |n⟩" and n_sel == 0:
+            meta = dict(meta)  # copy so you don’t mutate STATE_META globally
+            meta["classical"] = True
+
         elif state_type == "Coherent |α⟩":
             alpha_opts = {"α=0 (vacuum)":"0,0","α=1":"1,0","α=2":"2,0",
                           "α=1+i":"1,1","α=2+2i":"2,2","α=−2":"−2,0","α=2i":"0,2"}
