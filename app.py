@@ -716,7 +716,6 @@ def page_witness_lab():
         m=sd["metrics"]; wnv=sd.get("wnv",0.0)
         # Determine P-function classicality
         P_CLASS = {
-            "fock":              "Singular (∂²ⁿδ/∂α*ⁿ∂αⁿ) — non-classical",
             "coherent":          "δ²(α−α₀) — classical ✅",
             "squeezed":          "Singular / negative — non-classical",
             "thermal":           "Gaussian ≥ 0 — classical ✅",
@@ -724,7 +723,12 @@ def page_witness_lab():
             "displaced_squeezed":"Singular — non-classical",
             "gkp":               "Comb of singularities — non-classical",
         }
-        p_func = P_CLASS.get(grp, "Unknown")
+        # Fock |0⟩ (vacuum) = coherent state α=0  →  P = δ²(α)  →  CLASSICAL
+        # Fock |n≥1⟩  →  P involves nth-order derivatives of δ  →  NON-CLASSICAL
+        if grp == "fock":
+            p_func = "δ²(α) — classical ✅ (vacuum = coherent α=0)" if key == 0 else "∂²ⁿδ/∂αⁿ∂α*ⁿ — singular, non-classical"
+        else:
+            p_func = P_CLASS.get(grp, "Unknown")
  
         rows.append({"State":label,"⟨n⟩":m["mean_n"],"Purity":m["purity"],
             "Entropy":m["entropy"],"Mandel Q":m.get("mandel_Q",float("nan")),
@@ -837,36 +841,45 @@ def page_witness_lab():
         P_LABELS = {
             "coherent":           ("Classical ✅", "#fbbf24", "δ²(α−α₀) — Delta function (non-negative)"),
             "thermal":            ("Classical ✅", "#fb923c", "Gaussian ≥ 0 (non-negative)"),
-            "fock":               ("Non-classical ⚡", "#f472b6", "Derivatives of δ — singular"),
+            "fock_0":             ("Classical ✅", "#34d399", "δ²(α) — vacuum = coherent α=0\n(non-negative delta at origin)"),
+            "fock_n":             ("Non-classical ⚡", "#f472b6", "∂²ⁿδ/∂αⁿ∂α*ⁿ — nth-order derivatives of δ\n(singular for n≥1)"),
             "squeezed":           ("Non-classical ⚡", "#6366f1", "Squeezed Gaussian — P < 0 in some region"),
             "cat":                ("Non-classical ⚡", "#a3e635", "Sum of singular terms with interference"),
             "displaced_squeezed": ("Non-classical ⚡", "#22d3ee", "Shifted singular Gaussian with P < 0"),
             "gkp":                ("Non-classical ⚡", "#c084fc", "Comb of singularities"),
         }
-        
-        # Visual: two-column layout
-        cl_grps  = ["coherent","thermal"]
-        ncl_grps = ["fock","squeezed","cat","displaced_squeezed","gkp"]
  
+        # Visual: two-column layout
+        cl_grps  = ["coherent","thermal","fock_0"]
+        ncl_grps = ["fock_n","squeezed","cat","displaced_squeezed","gkp"]
+ 
+        G_DISPLAY_NAMES = {
+            "coherent":"COHERENT |α⟩","thermal":"THERMAL ρ_th",
+            "fock_0":"FOCK |0⟩  (vacuum)","fock_n":"FOCK |n≥1⟩",
+            "squeezed":"SQUEEZED |r,φ⟩","cat":"CAT STATE",
+            "displaced_squeezed":"DISPLACED-SQUEEZED","gkp":"GKP STATE",
+        }
         col_cl, col_ncl = st.columns(2)
         with col_cl:
-            st.markdown("#### ☀️ Classical states (P ≥ 0)")
+            st.markdown("#### ☀️ Classical states (P ≥ 0 everywhere)")
             for g in cl_grps:
                 lbl, col, desc = P_LABELS[g]
+                disp = G_DISPLAY_NAMES.get(g, g.upper())
                 st.markdown(f"""
                 <div style="background:rgba(251,191,36,0.08);border:1px solid rgba(251,191,36,0.3);
                             border-radius:10px;padding:12px 14px;margin:8px 0">
-                  <div style="font-family:var(--mono);font-size:0.7rem;color:{col};font-weight:700">{g.upper()}</div>
+                  <div style="font-family:var(--mono);font-size:0.7rem;color:{col};font-weight:700">{disp}</div>
                   <div style="font-size:0.78rem;color:#94a3b8;white-space:pre-line;margin-top:4px">{desc}</div>
                 </div>""", unsafe_allow_html=True)
         with col_ncl:
             st.markdown("#### ⚡ Non-classical states (P singular or negative)")
             for g in ncl_grps:
                 lbl, col, desc = P_LABELS[g]
+                disp = G_DISPLAY_NAMES.get(g, g.upper())
                 st.markdown(f"""
                 <div style="background:rgba(244,114,182,0.06);border:1px solid rgba(244,114,182,0.25);
                             border-radius:10px;padding:12px 14px;margin:8px 0">
-                  <div style="font-family:var(--mono);font-size:0.7rem;color:{col};font-weight:700">{g.upper()}</div>
+                  <div style="font-family:var(--mono);font-size:0.7rem;color:{col};font-weight:700">{disp}</div>
                   <div style="font-size:0.78rem;color:#94a3b8;white-space:pre-line;margin-top:4px">{desc}</div>
                 </div>""", unsafe_allow_html=True)
  
@@ -879,7 +892,8 @@ def page_witness_lab():
             try: sd=DATA["states"][grp][key]
             except: continue
             wnv=sd.get("wnv",0.0)
-            is_classical = (grp in ["coherent","thermal"])
+            # Fock |0⟩ (vacuum) is classical — P = δ²(α), same as coherent α=0
+            is_classical = (grp in ["coherent","thermal"]) or (grp == "fock" and key == 0)
             p_rows.append({"State":label,"P-classical":is_classical,
                            "WNV":round(wnv,5),
                            "P-function type":P_LABELS.get(grp,("?","#fff","?"))[2].replace("\n"," ")})
