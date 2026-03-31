@@ -431,6 +431,6 @@ MIT License - see [LICENSE](LICENSE). Free to use, modify, and distribute with a
 
 <br/><br/>
 
-*If this project helped you, please consider giving it a ⭐ — it helps others discover it*
+*If this project helped you, please consider giving it a ⭐ it helps others discover it*
 
 </div>
