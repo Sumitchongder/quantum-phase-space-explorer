@@ -207,21 +207,21 @@ E_N      E_N > 0                             ⟹  entangled (two-mode states)
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
 │                  Streamlit Dashboard  (app.py v5.0)                  │
-│  ┌───────────┐ ┌───────────┐ ┌───────────┐ ┌──────────┐ ┌────────┐  │
-│  │  State    │ │  Phase    │ │  Witness  │ │ Channel  │ │  GBS   │  │
-│  │ Explorer  │ │Space Zoo  │ │   Lab     │ │   Sim    │ │ CV-QML │  │
-│  └─────┬─────┘ └─────┬─────┘ └─────┬─────┘ └────┬─────┘ └───┬────┘  │
-│        └─────────────┴─────────────┴─────────────┴───────────┘       │
-│                  @st.cache_resource  (~3 s load)                      │
+│  ┌───────────┐ ┌───────────┐ ┌───────────┐ ┌──────────┐ ┌────────┐   │
+│  │  State    │ │  Phase    │ │  Witness  │ │ Channel  │ │  GBS   │   │
+│  │ Explorer  │ │Space Zoo  │ │   Lab     │ │   Sim    │ │ CV-QML │   │
+│  └─────┬─────┘ └─────┬─────┘ └─────┬─────┘ └────┬─────┘ └───┬────┘   │
+│        └─────────────┴─────────────┴────────────┴───────────┘        │
+│                  @st.cache_resource  (~3 s load)                     │
 ├──────────────────────────────────────────────────────────────────────┤
-│              Pre-computed Data Layer  (data/*.pkl)                    │
-│   states.pkl (7.9 MB)  ·  channels.pkl (3.8 MB)  ·  gbs.pkl (1.6 MB)│
+│              Pre-computed Data Layer  (data/*.pkl)                   │
+│  states.pkl (7.9 MB)  ·  channels.pkl (3.8 MB)  ·  gbs.pkl (1.6 MB)  │
 ├──────────────────────────────────────────────────────────────────────┤
-│           quantum_utils.py  (v1.0.1 · 1978 lines · 15 modules)       │
+│         quantum_utils.py  (v1.0.1 · 1978 lines · 15 modules)         │
 ├──────────────────────────────────────────────────────────────────────┤
-│              HPC Computation Layer  (generate_data.py)                │
-│   QuTiP 5.2.3  ·  Strawberry Fields 0.23  ·  PennyLane 0.42         │
-│   NumPy 2.2.6  ·  SciPy 1.13.1  ·  IIT Jodhpur HPC (cn03)           │
+│              HPC Computation Layer  (generate_data.py)               │
+│       QuTiP 5.2.3  ·  Strawberry Fields 0.23  ·  PennyLane 0.42      │
+│        NumPy 2.2.6  ·  SciPy 1.13.1  ·  IIT Jodhpur HPC (cn03)       │
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
