@@ -1,4 +1,4 @@
-<h1>⚛️ CV Quantum Phase Space Explorer</h1>
+<h1>⚛️ CV Quantum Phase Space Simulator</h1>
 
 <div align="center">
   
